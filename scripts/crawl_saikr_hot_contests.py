@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Crawl Saikr hot contests and export a structured Excel workbook."""
+"""Crawl Saikr hot contests and export detail-page fields to Excel."""
 
 from __future__ import annotations
 
 import argparse
+import html as html_lib
 import json
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 import urllib.error
@@ -21,9 +21,9 @@ from typing import Any
 from lxml import html
 
 
-START_URL = "https://www.saikr.com/index/hot/contest"
+DESKTOP_URL = "https://www.saikr.com/index/hot/contest"
+MOBILE_URL = "https://m.saikr.com/index/hot/contest"
 DEFAULT_OUTPUT = Path("dataset") / "saikr_hot_contests_top50.xlsx"
-MAX_DETAIL_TEXT = 1200
 
 HEADERS = {
     "User-Agent": (
@@ -37,8 +37,9 @@ HEADERS = {
 
 FIELD_LABELS = {
     "organizer": ["主办方", "主办单位", "组织单位", "主办机构", "主办"],
-    "signup_deadline": ["报名截止", "报名时间", "参赛报名", "截止时间", "报名日期"],
-    "contest_time": ["比赛时间", "竞赛时间", "活动时间", "比赛日期", "初赛时间", "决赛时间"],
+    "category": ["竞赛类别", "赛事类别", "类别"],
+    "registration_time": ["报名时间", "报名截止", "报名日期", "参赛报名"],
+    "contest_time": ["竞赛时间", "比赛时间", "活动时间", "比赛日期", "作品提交时间", "参赛作品提交时间"],
     "participant_scope": ["参赛对象", "参赛资格", "面向对象", "参赛人群", "参与对象"],
     "fee_or_status": ["报名费", "参赛费用", "费用", "报名状态", "状态"],
 }
@@ -51,96 +52,58 @@ def now_iso() -> str:
 def clean_text(value: str | None) -> str:
     if not value:
         return ""
-    value = re.sub(r"\s+", " ", value.replace("\u00a0", " ")).strip()
-    return value
+    value = html_lib.unescape(value).replace("\u00a0", " ")
+    return re.sub(r"\s+", " ", value).strip()
 
 
-def visible_lines(node: html.HtmlElement) -> list[str]:
-    for bad in node.xpath(".//script|.//style|.//noscript"):
+def sanitize_html(page_html: str) -> str:
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", page_html)
+
+
+def parse_doc(page_html: str) -> html.HtmlElement:
+    return html.fromstring(sanitize_html(page_html))
+
+
+def visible_text_lines(doc: html.HtmlElement) -> list[str]:
+    doc = html.fromstring(html.tostring(doc, encoding="unicode"))
+    for bad in doc.xpath(".//script|.//style|.//noscript"):
         parent = bad.getparent()
         if parent is not None:
             parent.remove(bad)
-    text = node.text_content()
-    lines = [clean_text(line) for line in re.split(r"[\r\n]+", text)]
+    lines = [clean_text(line) for line in doc.text_content().splitlines()]
     return [line for line in lines if line]
 
 
-def compact_excerpt(lines: list[str], limit: int = MAX_DETAIL_TEXT) -> str:
+def compact_visible_text(doc: html.HtmlElement, limit: int = 600) -> str:
     seen: set[str] = set()
     kept: list[str] = []
-    for line in lines:
-        if line in seen:
+    for line in visible_text_lines(doc):
+        if line in seen or len(line) <= 2:
             continue
         seen.add(line)
-        if len(line) <= 2:
-            continue
         kept.append(line)
         if len(" ".join(kept)) >= limit:
             break
     return " ".join(kept)[:limit]
 
 
-def normalize_count(value: str | None) -> int | None:
-    if not value:
-        return None
-    raw = value.replace(",", "").strip()
-    match = re.search(r"(\d+(?:\.\d+)?)(\s*[万wWkK]?)", raw)
-    if not match:
-        return None
-    number = float(match.group(1))
-    unit = match.group(2).strip().lower()
-    if unit in {"万", "w"}:
-        number *= 10000
-    elif unit == "k":
-        number *= 1000
-    return int(number)
+def full_visible_text(doc: html.HtmlElement) -> str:
+    return "\n".join(visible_text_lines(doc))
 
 
-def extract_count(text: str, keywords: list[str]) -> int | None:
-    patterns = [
-        rf"(\d+(?:\.\d+)?\s*[万wWkK]?)\s*(?:{'|'.join(map(re.escape, keywords))})",
-        rf"(?:{'|'.join(map(re.escape, keywords))})\s*[:：]?\s*(\d+(?:\.\d+)?\s*[万wWkK]?)",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, re.I)
-        if match:
-            return normalize_count(match.group(1))
-    return None
+def meta_content(doc: html.HtmlElement, name: str) -> str:
+    values = doc.xpath(
+        f"//meta[translate(@name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='{name.lower()}']/@content"
+    )
+    return clean_text(values[0]) if values else ""
 
 
-def label_regex(labels: list[str]) -> re.Pattern[str]:
-    return re.compile(rf"({'|'.join(map(re.escape, labels))})\s*[:：]?\s*(.+)?")
-
-
-def extract_labeled_field(lines: list[str], labels: list[str], max_len: int = 180) -> str:
-    pattern = label_regex(labels)
-    for idx, line in enumerate(lines):
-        match = pattern.search(line)
-        if not match:
-            continue
-        value = clean_text(match.group(2))
-        if value and value not in labels:
-            return value[:max_len]
-        for next_line in lines[idx + 1 : idx + 4]:
-            next_value = clean_text(next_line)
-            if next_value and not label_regex(sum(FIELD_LABELS.values(), [])).match(next_value):
-                return next_value[:max_len]
-    joined = " ".join(lines)
-    match = re.search(rf"({'|'.join(map(re.escape, labels))})\s*[:：]\s*(.{{2,{max_len}}})", joined)
-    return clean_text(match.group(2))[:max_len] if match else ""
-
-
-def extract_date_like(lines: list[str]) -> str:
-    joined = " ".join(lines)
-    patterns = [
-        r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:\s*[-至~—]\s*20?\d{0,2}[-/.年]?\d{1,2}[-/.月]\d{1,2}日?)?",
-        r"\d{1,2}月\d{1,2}日(?:\s*[-至~—]\s*\d{1,2}月\d{1,2}日)?",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, joined)
-        if match:
-            return match.group(0)
-    return ""
+def page_title(doc: html.HtmlElement) -> str:
+    title = clean_text(doc.xpath("string(//title)"))
+    title = re.sub(r"[-_]?大学生竞赛[-_]?赛氪$", "", title).strip()
+    if title.startswith("赛氪 - 全国大学生竞赛活动平台"):
+        return ""
+    return title
 
 
 def is_saikr_url(url: str) -> bool:
@@ -151,18 +114,45 @@ def is_saikr_url(url: str) -> bool:
 
 def is_contest_detail_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
-    path = parsed.path.lower()
-    return is_saikr_url(url) and bool(re.search(r"/(vse|vs|contest|races)/", path))
+    return is_saikr_url(url) and bool(re.search(r"/(vse|vs|contest|races)/", parsed.path.lower()))
 
 
-def fetch_html(url: str, timeout: int = 20) -> str:
+def detail_url_candidates(url: str) -> list[str]:
+    parsed = urllib.parse.urlparse(url)
+    candidates = [url]
+    path = parsed.path.rstrip("/")
+    if parsed.netloc.endswith("saikr.com") and path.startswith("/vse/"):
+        candidates.append(urllib.parse.urlunparse(("https", "m.saikr.com", path, "", "", "")))
+        slug = path[len("/vse/") :]
+        if slug:
+            candidates.append(urllib.parse.urlunparse(("https", "m.saikr.com", f"/{slug}", "", "", "")))
+    deduped: list[str] = []
+    for candidate in candidates:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    return deduped
+
+
+def is_generic_detail_page(doc: html.HtmlElement, lines: list[str], expected_title: str) -> bool:
+    title = clean_text(doc.xpath("string(//title)"))
+    text = "\n".join(lines)
+    if title.startswith("赛氪 - 全国大学生竞赛活动平台"):
+        return True
+    if len(text) < 200 and "全国大学生竞赛活动平台" in text:
+        return True
+    if expected_title and expected_title[:8] not in text and "竞赛详情" not in text and len(text) < 600:
+        return True
+    return False
+
+
+def fetch_html(url: str, timeout: int = 20) -> tuple[str, int]:
     if not is_saikr_url(url):
         raise ValueError(f"Refusing to fetch non-Saikr URL: {url}")
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=timeout) as response:
         body = response.read()
         encoding = response.headers.get_content_charset() or "utf-8"
-    return body.decode(encoding, errors="replace")
+        return body.decode(encoding, errors="replace"), response.status
 
 
 def nearest_text_container(anchor: html.HtmlElement) -> html.HtmlElement:
@@ -179,131 +169,166 @@ def nearest_text_container(anchor: html.HtmlElement) -> html.HtmlElement:
     return anchor
 
 
-def extract_tags(node: html.HtmlElement) -> str:
-    candidates: list[str] = []
-    for item in node.xpath(".//*[contains(@class,'tag') or contains(@class,'label')]"):
-        text = clean_text(item.text_content())
-        if text and len(text) <= 30:
-            candidates.append(text)
-    deduped = list(dict.fromkeys(candidates))
-    return "、".join(deduped[:8])
-
-
-def extract_summary(title: str, lines: list[str]) -> str:
-    ignored = {"查看详情", "立即报名", "报名", "收藏", "分享"}
-    for line in lines:
-        if line == title or line in ignored:
-            continue
-        if any(word in line for word in ["浏览", "关注", "主办", "报名时间", "比赛时间"]):
-            continue
-        if 12 <= len(line) <= 260:
-            return line
-    return ""
-
-
-def parse_list_page(page_html: str, source_url: str, limit: int) -> list[dict[str, Any]]:
-    doc = html.fromstring(page_html)
+def parse_list_page(page_html: str, source_url: str) -> list[dict[str, str]]:
+    doc = parse_doc(page_html)
+    records: list[dict[str, str]] = []
     seen: set[str] = set()
-    records: list[dict[str, Any]] = []
 
     for anchor in doc.xpath("//a[@href]"):
         href = urllib.parse.urljoin(source_url, anchor.get("href") or "")
-        if not is_contest_detail_url(href):
-            continue
+        href = urllib.parse.urldefrag(href)[0]
         title = clean_text(anchor.text_content())
+        if not is_contest_detail_url(href) or href in seen:
+            continue
         if len(title) < 4 or title in {"查看详情", "立即报名", "报名参赛"}:
             continue
 
-        normalized = urllib.parse.urldefrag(href)[0]
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-
-        container = nearest_text_container(anchor)
-        lines = visible_lines(container)
-        container_text = " ".join(lines)
-
+        seen.add(href)
         records.append(
             {
-                "rank": len(records) + 1,
-                "title": title[:160],
-                "detail_url": normalized,
-                "organizer": extract_labeled_field(lines, FIELD_LABELS["organizer"]),
-                "summary": extract_summary(title, lines),
-                "view_count": extract_count(container_text, ["浏览", "浏览量", "阅读", "人浏览"]),
-                "follow_count": extract_count(container_text, ["关注", "收藏", "人关注"]),
-                "signup_deadline": "",
-                "contest_time": "",
-                "participant_scope": "",
-                "fee_or_status": "",
-                "tags": extract_tags(container),
-                "source_page": source_url,
-                "scraped_at": "",
-                "parse_status": "list_only",
-                "parse_notes": "",
-                "detail_text_excerpt": "",
+                "list_title": title,
+                "detail_url": href,
+                "source_url": source_url,
+                "list_card_text": clean_text(nearest_text_container(anchor).text_content()),
             }
         )
-        if len(records) >= limit:
-            break
 
     return records
 
 
-def parse_detail_page(record: dict[str, Any], page_html: str) -> dict[str, Any]:
-    doc = html.fromstring(page_html)
-    lines = visible_lines(doc)
+def merge_records(record_groups: list[list[dict[str, str]]], limit: int) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in record_groups:
+        for record in group:
+            if record["detail_url"] in seen:
+                continue
+            seen.add(record["detail_url"])
+            record["rank"] = len(merged) + 1
+            merged.append(record)
+            if len(merged) >= limit:
+                return merged
+    return merged
+
+
+def collect_list_records(urls: list[str], limit: int) -> tuple[list[dict[str, Any]], list[str]]:
+    groups: list[list[dict[str, str]]] = []
     notes: list[str] = []
+    for url in urls:
+        try:
+            page_html, status = fetch_html(url)
+            records = parse_list_page(page_html, url)
+            groups.append(records)
+            notes.append(f"{url}: HTTP {status}, {len(records)} contest links")
+            if len(merge_records(groups, limit)) >= limit:
+                break
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+            notes.append(f"{url}: {type(exc).__name__}: {exc}")
+    return merge_records(groups, limit), notes
 
-    for field, labels in FIELD_LABELS.items():
-        value = extract_labeled_field(lines, labels)
-        if value:
-            record[field] = value
 
-    if not record.get("contest_time"):
-        fallback_date = extract_date_like(lines)
-        if fallback_date:
-            record["contest_time"] = fallback_date
-            notes.append("contest_time used first date-like fallback")
+def value_after_label_in_text(text: str, labels: list[str], max_len: int = 180) -> str:
+    for label in labels:
+        patterns = [
+            rf"{re.escape(label)}\s*[:：]\s*([^,，。；;\n]{{1,{max_len}}})",
+            rf"{re.escape(label)}\s+([^,，。；;\n]{{1,{max_len}}})",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return clean_text(match.group(1))[:max_len]
+    return ""
 
-    if not record.get("summary"):
-        title = record.get("title", "")
-        record["summary"] = extract_summary(title, lines)
-        if record["summary"]:
-            notes.append("summary filled from detail page")
 
-    detail_tags = extract_tags(doc)
-    if detail_tags:
-        existing_tags = [tag for tag in str(record.get("tags", "")).split("、") if tag]
-        merged_tags = list(dict.fromkeys(existing_tags + detail_tags.split("、")))
-        record["tags"] = "、".join(merged_tags[:12])
+def value_after_label_in_lines(lines: list[str], labels: list[str], max_len: int = 180) -> str:
+    label_pattern = re.compile("|".join(re.escape(label) for label in labels))
+    all_label_pattern = re.compile("|".join(re.escape(label) for labels_ in FIELD_LABELS.values() for label in labels_))
 
-    record["detail_text_excerpt"] = compact_excerpt(lines)
+    for idx, line in enumerate(lines):
+        if not label_pattern.search(line):
+            continue
+        inline = value_after_label_in_text(line, labels, max_len)
+        if inline:
+            return inline
+        for next_line in lines[idx + 1 : idx + 5]:
+            if all_label_pattern.search(next_line):
+                continue
+            if next_line:
+                return next_line[:max_len]
+    return ""
 
-    missing = [
-        name
-        for name in ["signup_deadline", "contest_time", "participant_scope"]
-        if not record.get(name)
-    ]
-    if missing:
-        notes.append("missing fields: " + ", ".join(missing))
 
-    record["parse_status"] = "detail_ok" if not missing else "detail_partial"
-    record["parse_notes"] = "; ".join(notes)
-    return record
+def extract_summary(doc: html.HtmlElement, meta_description: str) -> str:
+    intro = value_after_label_in_text(meta_description, ["竞赛简介", "简介"], 260)
+    if intro:
+        return intro
+    for line in visible_text_lines(doc):
+        if 30 <= len(line) <= 260 and not any(skip in line for skip in ["登录", "注册", "立即报名", "关注", "分享"]):
+            return line
+    return meta_description[:260]
+
+
+def enrich_from_detail(record: dict[str, Any], fetched_at: str) -> None:
+    try:
+        selected_doc = None
+        selected_lines: list[str] = []
+        selected_status: int | str = ""
+        for candidate_url in detail_url_candidates(record["detail_url"]):
+            detail_html, status = fetch_html(candidate_url)
+            doc = parse_doc(detail_html)
+            lines = visible_text_lines(doc)
+            selected_doc = doc
+            selected_lines = lines
+            selected_status = status
+            if not is_generic_detail_page(doc, lines, record.get("list_title", "")):
+                break
+
+        if selected_doc is None:
+            raise RuntimeError("no detail page fetched")
+
+        doc = selected_doc
+        lines = selected_lines
+        joined = "\n".join(lines)
+        meta_description = meta_content(doc, "description")
+
+        record["title"] = page_title(doc) or record["list_title"]
+        record["organizer"] = (
+            value_after_label_in_text(meta_description, FIELD_LABELS["organizer"])
+            or value_after_label_in_lines(lines, FIELD_LABELS["organizer"])
+        )
+        record["category"] = value_after_label_in_lines(lines, FIELD_LABELS["category"])
+        record["registration_time"] = value_after_label_in_lines(lines, FIELD_LABELS["registration_time"])
+        record["contest_time"] = (
+            value_after_label_in_text(meta_description, FIELD_LABELS["contest_time"])
+            or value_after_label_in_lines(lines, FIELD_LABELS["contest_time"])
+        )
+        record["participant_scope"] = value_after_label_in_lines(lines, FIELD_LABELS["participant_scope"])
+        record["fee_or_status"] = value_after_label_in_lines(lines, FIELD_LABELS["fee_or_status"])
+        record["summary"] = extract_summary(doc, meta_description)
+        record["detail_text"] = full_visible_text(doc)
+        record["http_status"] = selected_status
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError, RuntimeError) as exc:
+        record["title"] = record["list_title"]
+        record["organizer"] = ""
+        record["category"] = ""
+        record["registration_time"] = ""
+        record["contest_time"] = ""
+        record["participant_scope"] = ""
+        record["fee_or_status"] = ""
+        record["summary"] = clean_text(record.get("list_card_text", ""))
+        record["detail_text"] = ""
+        record["http_status"] = type(exc).__name__
+
+    record["fetched_at"] = fetched_at
+    record.pop("list_title", None)
+    record.pop("list_card_text", None)
 
 
 def enrich_details(records: list[dict[str, Any]], sleep_seconds: float) -> None:
-    scraped_at = now_iso()
+    fetched_at = now_iso()
     for record in records:
-        record["scraped_at"] = scraped_at
-        try:
-            time.sleep(sleep_seconds)
-            detail_html = fetch_html(record["detail_url"])
-            parse_detail_page(record, detail_html)
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
-            record["parse_status"] = "detail_failed"
-            record["parse_notes"] = f"{type(exc).__name__}: {exc}"
+        time.sleep(sleep_seconds)
+        enrich_from_detail(record, fetched_at)
 
 
 def find_node() -> str:
@@ -316,16 +341,15 @@ def find_node() -> str:
     raise RuntimeError("Node.js was not found. Use the bundled Codex runtime or install Node.js.")
 
 
-def build_excel(records: list[dict[str, Any]], meta: dict[str, Any], output_path: Path) -> None:
+def build_excel(records: list[dict[str, Any]], output_path: Path) -> None:
     builder = Path(__file__).with_name("build_saikr_hot_contests_xlsx.mjs")
     if not builder.exists():
         raise RuntimeError(f"Excel builder not found: {builder}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"records": records, "meta": meta}
-    with tempfile.TemporaryDirectory(prefix="saikr_hot_") as temp_dir:
-        json_path = Path(temp_dir) / "saikr_hot_contests.json"
-        json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="saikr_hot_fields_") as temp_dir:
+        json_path = Path(temp_dir) / "saikr_hot_contests_fields.json"
+        json_path.write_text(json.dumps({"records": records}, ensure_ascii=False, indent=2), encoding="utf-8")
         subprocess.run(
             [find_node(), str(builder), str(json_path), str(output_path)],
             check=True,
@@ -334,8 +358,8 @@ def build_excel(records: list[dict[str, Any]], meta: dict[str, Any], output_path
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Crawl Saikr hot contests and export Excel.")
-    parser.add_argument("--url", default=START_URL, help="Saikr hot contest page URL.")
+    parser = argparse.ArgumentParser(description="Crawl Saikr hot contests and export detail-page fields.")
+    parser.add_argument("--url", default=DESKTOP_URL, help="Primary Saikr hot contest page URL.")
     parser.add_argument("--limit", type=int, default=50, help="Maximum contest count to export.")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="Output .xlsx path.")
     parser.add_argument("--sleep", type=float, default=0.6, help="Seconds to wait between detail requests.")
@@ -349,25 +373,22 @@ def main() -> int:
     if not is_saikr_url(args.url):
         raise ValueError("--url must be a saikr.com URL")
 
-    started_at = now_iso()
-    page_html = fetch_html(args.url)
-    records = parse_list_page(page_html, args.url, args.limit)
+    list_urls = [args.url]
+    if args.url != MOBILE_URL:
+        list_urls.append(MOBILE_URL)
+
+    records, list_notes = collect_list_records(list_urls, args.limit)
     if not records:
-        raise RuntimeError("No contest links were parsed from the hot contest page.")
+        raise RuntimeError("No contest links were parsed from Saikr hot contest pages.")
 
     enrich_details(records, args.sleep)
-
-    meta = {
-        "source_url": args.url,
-        "requested_limit": args.limit,
-        "actual_count": len(records),
-        "started_at": started_at,
-        "finished_at": now_iso(),
-        "notes": "Only public Saikr hot contest and contest detail pages were fetched.",
-    }
     output_path = Path(args.output)
-    build_excel(records, meta, output_path)
+    build_excel(records, output_path)
 
+    if len(records) < args.limit:
+        print(f"Requested {args.limit} contests, but public Saikr pages exposed {len(records)} unique contest links.")
+        for note in list_notes:
+            print(note)
     print(f"Exported {len(records)} contests to {output_path.resolve()}")
     return 0
 
