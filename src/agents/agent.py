@@ -24,6 +24,7 @@ from tools.sync_tools import (
     start_scheduled_sync,
     trigger_wechat_sync,
     list_wechat_sources,
+    refresh_wechat_accounts,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ def build_agent(ctx=None):
         start_scheduled_sync,
         trigger_wechat_sync,
         list_wechat_sources,
+        refresh_wechat_accounts,
     ]
 
     agent = create_agent(

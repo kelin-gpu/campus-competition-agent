@@ -12,6 +12,8 @@
 - 异常处理 + 重试机制
 """
 import re
+import os
+import json
 import time
 import logging
 import hashlib
@@ -28,16 +30,29 @@ logger = logging.getLogger(__name__)
 # 配置
 # ============================================================
 
-# 目标公众号列表
-WECHAT_ACCOUNTS = [
-    {"name": "南京大学", "biz": "", "desc": "南京大学官方公众号"},
-    {"name": "南京大学团委", "biz": "", "desc": "共青团南京大学委员会"},
-    {"name": "南京大学学生会", "biz": "", "desc": "南京大学学生会"},
-    {"name": "南京大学教务处", "biz": "", "desc": "南京大学教务处"},
-    {"name": "南京大学研究生院", "biz": "", "desc": "南京大学研究生院"},
-    {"name": "南京大学就业创业指导中心", "biz": "", "desc": "就业创业指导"},
-    {"name": "南京大学健雄书院", "biz": "", "desc": "健雄书院"},
+# 核心公众号列表（永远保留，不受动态发现影响）
+CORE_ACCOUNTS = [
+    {"name": "南京大学", "biz": "", "desc": "南京大学官方公众号", "is_core": True},
+    {"name": "南京大学团委", "biz": "", "desc": "共青团南京大学委员会", "is_core": True},
+    {"name": "南京大学学生会", "biz": "", "desc": "南京大学学生会", "is_core": True},
+    {"name": "南京大学教务处", "biz": "", "desc": "南京大学教务处", "is_core": True},
+    {"name": "南京大学研究生院", "biz": "", "desc": "南京大学研究生院", "is_core": True},
+    {"name": "南京大学就业创业指导中心", "biz": "", "desc": "就业创业指导", "is_core": True},
+    {"name": "南京大学健雄书院", "biz": "", "desc": "健雄书院", "is_core": True},
 ]
+
+# 向后兼容
+WECHAT_ACCOUNTS = CORE_ACCOUNTS
+
+# 动态发现的公众号缓存文件路径
+CACHE_DIR = os.path.join(os.getenv("COZE_WORKSPACE_PATH", "/workspace/projects"), "assets", "cache")
+ACCOUNTS_CACHE_FILE = os.path.join(CACHE_DIR, "wechat_accounts_cache.json")
+
+# 缓存有效期（天）
+CACHE_TTL_DAYS = 7
+
+# 动态发现公众号最大数量
+MAX_DISCOVERED_ACCOUNTS = 50
 
 # 请求间隔（秒），遵守 robots 协议
 REQUEST_INTERVAL = 5
@@ -108,6 +123,166 @@ def _request_with_retry(url: str, params: dict = None, max_retries: int = MAX_RE
 
 
 # ============================================================
+# 公众号动态发现 + 缓存机制
+# ============================================================
+
+def _load_accounts_cache() -> Optional[dict]:
+    """加载公众号列表缓存"""
+    try:
+        if not os.path.exists(ACCOUNTS_CACHE_FILE):
+            return None
+        with open(ACCOUNTS_CACHE_FILE, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+        # 检查缓存是否过期
+        cached_time = datetime.fromisoformat(cache.get("timestamp", "2000-01-01"))
+        if datetime.now() - cached_time > timedelta(days=CACHE_TTL_DAYS):
+            logger.info("Accounts cache expired, will refresh")
+            return None
+        logger.info(f"Loaded {len(cache.get('accounts', []))} accounts from cache")
+        return cache
+    except Exception as e:
+        logger.warning(f"Failed to load accounts cache: {e}")
+        return None
+
+
+def _save_accounts_cache(accounts: list):
+    """保存公众号列表到缓存"""
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        cache = {
+            "timestamp": datetime.now().isoformat(),
+            "accounts": accounts,
+        }
+        with open(ACCOUNTS_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+        logger.info(f"Saved {len(accounts)} accounts to cache")
+    except Exception as e:
+        logger.warning(f"Failed to save accounts cache: {e}")
+
+
+def discover_nju_accounts(max_pages: int = 5, max_accounts: int = MAX_DISCOVERED_ACCOUNTS) -> list:
+    """
+    通过搜狗微信搜索发现所有名称含"南京大学"的公众号
+
+    Args:
+        max_pages: 最大搜索页数
+        max_accounts: 最大公众号数量（上限保护）
+
+    Returns:
+        公众号列表 [{"name": str, "desc": str, "is_core": False}, ...]
+    """
+    logger.info(f"Discovering NJU WeChat accounts (max_pages={max_pages}, max_accounts={max_accounts})...")
+
+    discovered = {}  # name -> account dict, 用于去重
+
+    for page in range(1, max_pages + 1):
+        if page > 1:
+            time.sleep(REQUEST_INTERVAL)
+
+        params = {
+            "type": "1",  # 1=搜公众号
+            "query": "南京大学",
+            "page": page,
+            "ie": "utf8",
+        }
+
+        resp = _request_with_retry(SOGOU_WEIXIN_URL, params=params)
+        if resp is None:
+            logger.warning(f"Failed to fetch page {page} for account discovery")
+            continue
+
+        try:
+            soup = BeautifulSoup(resp.text, "lxml")
+
+            # 搜狗公众号搜索结果解析
+            for item in soup.select("ul.news-list2 > li") or soup.select("div.gzh-box2"):
+                name_tag = item.select_one("p.tit a") or item.select_one("a[data-z]")
+                if not name_tag:
+                    continue
+
+                name = name_tag.get_text(strip=True)
+                if not name or "南京大学" not in name:
+                    continue
+
+                # 跳过已在核心列表中的
+                if name in {acc["name"] for acc in CORE_ACCOUNTS}:
+                    continue
+
+                # 去重
+                if name in discovered:
+                    continue
+
+                desc_tag = item.select_one("dl:nth-child(3) dd") or item.select_one("span.sp-txt")
+                desc = desc_tag.get_text(strip=True)[:50] if desc_tag else ""
+
+                discovered[name] = {
+                    "name": name,
+                    "desc": desc or f"动态发现: {name}",
+                    "is_core": False,
+                }
+
+                if len(discovered) >= max_accounts:
+                    logger.info(f"Reached max_accounts limit ({max_accounts})")
+                    break
+
+            logger.info(f"Page {page}: found {len(discovered)} unique NJU accounts so far")
+
+        except Exception as e:
+            logger.error(f"Failed to parse account discovery page {page}: {e}")
+            continue
+
+    result = list(discovered.values())
+    logger.info(f"Discovered {len(result)} new NJU accounts (excluding core {len(CORE_ACCOUNTS)})")
+    return result
+
+
+def get_all_accounts(force_refresh: bool = False) -> list:
+    """
+    获取完整的公众号列表（核心 + 动态发现）
+
+    Args:
+        force_refresh: 是否强制刷新缓存
+
+    Returns:
+        合并去重后的公众号列表，核心公众号排在前面
+    """
+    # 1. 核心公众号永远保留
+    all_accounts = [dict(acc) for acc in CORE_ACCOUNTS]
+    core_names = {acc["name"] for acc in CORE_ACCOUNTS}
+
+    # 2. 尝试从缓存加载动态发现的公众号
+    discovered = []
+    if not force_refresh:
+        cache = _load_accounts_cache()
+        if cache:
+            discovered = cache.get("accounts", [])
+
+    # 3. 缓存不存在或已过期，重新搜索
+    if not discovered or force_refresh:
+        discovered = discover_nju_accounts()
+        if discovered:
+            _save_accounts_cache(discovered)
+
+    # 4. 合并去重（核心优先）
+    seen_names = set(core_names)
+    for acc in discovered:
+        name = acc.get("name", "")
+        if name and name not in seen_names:
+            seen_names.add(name)
+            all_accounts.append({
+                "name": name,
+                "desc": acc.get("desc", ""),
+                "is_core": False,
+            })
+
+    # 5. 排序：核心在前，动态在后，各自按名称排序
+    core_list = sorted([a for a in all_accounts if a.get("is_core")], key=lambda x: x["name"])
+    dynamic_list = sorted([a for a in all_accounts if not a.get("is_core")], key=lambda x: x["name"])
+
+    return core_list + dynamic_list
+
+
+# ============================================================
 # 搜狗微信搜索 - 获取文章列表
 # ============================================================
 
@@ -174,14 +349,15 @@ def search_wechat_articles(account_name: str, page: int = 1) -> list:
 
 
 def search_all_accounts(page: int = 1) -> list:
-    """搜索所有目标公众号的文章"""
+    """搜索所有目标公众号的文章（核心 + 动态发现）"""
+    all_accounts = get_all_accounts()
     all_articles = []
-    for i, account in enumerate(WECHAT_ACCOUNTS):
+    for i, account in enumerate(all_accounts):
         if i > 0:
             time.sleep(REQUEST_INTERVAL)
         articles = search_wechat_articles(account["name"], page=page)
         all_articles.extend(articles)
-        logger.info(f"[{i+1}/{len(WECHAT_ACCOUNTS)}] {account['name']}: {len(articles)} articles")
+        logger.info(f"[{i+1}/{len(all_accounts)}] {account['name']}: {len(articles)} articles")
     return all_articles
 
 
@@ -348,11 +524,31 @@ def crawl_wechat_events(hours: int = 24) -> list:
 
 
 def get_wechat_accounts() -> list:
-    """获取当前监控的公众号列表"""
+    """获取当前监控的公众号列表（核心 + 动态发现），含分类信息"""
+    all_accounts = get_all_accounts()
     return [
         {
             "name": acc["name"],
-            "desc": acc["desc"],
+            "desc": acc.get("desc", ""),
+            "is_core": acc.get("is_core", False),
         }
-        for acc in WECHAT_ACCOUNTS
+        for acc in all_accounts
     ]
+
+
+def refresh_wechat_accounts() -> dict:
+    """
+    强制刷新公众号列表（绕过缓存）
+
+    Returns:
+        {"core_count": int, "dynamic_count": int, "total": int, "accounts": list}
+    """
+    all_accounts = get_all_accounts(force_refresh=True)
+    core = [a for a in all_accounts if a.get("is_core")]
+    dynamic = [a for a in all_accounts if not a.get("is_core")]
+    return {
+        "core_count": len(core),
+        "dynamic_count": len(dynamic),
+        "total": len(all_accounts),
+        "accounts": all_accounts,
+    }

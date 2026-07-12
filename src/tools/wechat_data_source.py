@@ -14,6 +14,7 @@ from coze_coding_utils.runtime_ctx.context import new_context
 from tools.wechat_crawler import (
     crawl_wechat_events,
     get_wechat_accounts,
+    refresh_wechat_accounts as _refresh_accounts,
     is_relevant,
     WECHAT_ACCOUNTS,
 )
@@ -112,6 +113,30 @@ def enrich_wechat_events(hours: int = 24, ctx=None) -> list:
     return enriched
 
 
-def get_wechat_sources() -> list:
-    """获取当前监控的公众号列表"""
-    return get_wechat_accounts()
+def get_wechat_sources() -> dict:
+    """
+    获取当前监控的公众号列表，分类展示核心和动态发现的公众号
+
+    Returns:
+        {"core": list, "dynamic": list, "total": int}
+    """
+    accounts = get_wechat_accounts()
+    core = [a for a in accounts if a.get("is_core")]
+    dynamic = [a for a in accounts if not a.get("is_core")]
+    return {
+        "core": core,
+        "dynamic": dynamic,
+        "total": len(accounts),
+    }
+
+
+def refresh_wechat_accounts() -> dict:
+    """
+    手动刷新公众号监控列表（绕过缓存，重新搜索）
+
+    Returns:
+        {"core_count": int, "dynamic_count": int, "total": int}
+    """
+    result = _refresh_accounts()
+    logger.info(f"Refreshed WeChat accounts: core={result['core_count']}, dynamic={result['dynamic_count']}, total={result['total']}")
+    return result
