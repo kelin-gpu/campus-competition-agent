@@ -16,6 +16,13 @@ from storage.memory.memory_saver import get_memory_saver
 from tools.event_query_tool import query_events, query_event_detail, get_deadline_reminders
 from tools.event_parse_tool import parse_and_save_notification
 from tools.web_search_tool import web_search_events
+from tools.sync_tools import (
+    trigger_full_sync,
+    trigger_incremental_sync,
+    enrich_single_event_tool,
+    get_sync_status,
+    start_scheduled_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +84,11 @@ def build_agent(ctx=None):
         get_deadline_reminders,
         parse_and_save_notification,
         web_search_events,
+        trigger_full_sync,
+        trigger_incremental_sync,
+        enrich_single_event_tool,
+        get_sync_status,
+        start_scheduled_sync,
     ]
 
     agent = create_agent(

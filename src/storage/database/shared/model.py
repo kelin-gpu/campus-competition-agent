@@ -47,3 +47,4 @@ class EventInfo(Base):
     organizer: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, comment="主办方")
     update_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=text('now()'), nullable=True, comment="更新时间")
     original_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="原始通知正文")
+    is_ministry_approved: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, server_default=text('false'), comment="是否教育部目录竞赛")
