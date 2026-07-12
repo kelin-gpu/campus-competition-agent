@@ -1,7 +1,7 @@
 """
 数据同步工作流
 功能：
-1. 从多个数据源（赛氪、教育部目录等）加载数据
+1. 从多个数据源（赛氪、教育部目录、微信公众号）加载数据
 2. AI字段补全
 3. 去重合并（标题标准化 + 编辑距离 > 0.85 视为同一项）
 4. 批量入库
@@ -203,7 +203,7 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
 def run_full_sync(ctx=None) -> dict:
     """
     执行完整的数据同步流程：
-    1. 加载赛氪数据 + 教育部目录
+    1. 加载赛氪数据 + 教育部目录 + 微信公众号
     2. AI字段补全
     3. 去重合并入库
 
@@ -247,10 +247,20 @@ def run_full_sync(ctx=None) -> dict:
     logger.info(f"Enriching {len(saikr_data)} saikr events with AI...")
     saikr_enriched = enrich_batch(saikr_data, ctx=ctx)
 
-    # 4. 合并两个数据源（教育部优先）
-    all_events = ministry_enriched + saikr_enriched
+    # 4. 微信公众号数据抓取 + AI补全
+    wechat_enriched = []
+    try:
+        from tools.wechat_data_source import enrich_wechat_events
+        logger.info("Fetching and enriching WeChat events...")
+        wechat_enriched = enrich_wechat_events(hours=0, ctx=ctx)  # hours=0 不过滤时间，全量抓取
+        logger.info(f"Got {len(wechat_enriched)} WeChat events")
+    except Exception as e:
+        logger.error(f"WeChat sync failed (non-fatal): {e}")
 
-    # 5. 同步到数据库
+    # 5. 合并三个数据源（教育部优先）
+    all_events = ministry_enriched + saikr_enriched + wechat_enriched
+
+    # 6. 同步到数据库
     logger.info(f"Syncing {len(all_events)} events to database...")
     stats = sync_events_to_db(all_events, ctx=ctx)
 
@@ -282,3 +292,40 @@ def run_incremental_sync(new_raw_events: list, ctx=None) -> dict:
 
     logger.info(f"=== Incremental sync complete: {stats} ===")
     return stats
+
+
+def run_wechat_sync(hours: int = 6, ctx=None) -> dict:
+    """
+    微信公众号增量同步
+
+    Args:
+        hours: 抓取过去 N 小时的文章
+        ctx: 请求上下文
+
+    Returns:
+        同步统计信息
+    """
+    if ctx is None:
+        ctx = request_context.get() or new_context(method="wechat_sync")
+
+    logger.info(f"=== Starting WeChat sync (last {hours}h) ===")
+
+    try:
+        from tools.wechat_data_source import fetch_wechat_events
+        wechat_events = fetch_wechat_events(hours=hours, ctx=ctx)
+
+        if not wechat_events:
+            logger.info("No new WeChat events found")
+            return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+        # AI补全
+        enriched = enrich_batch(wechat_events, ctx=ctx)
+
+        # 同步入库
+        stats = sync_events_to_db(enriched, ctx=ctx)
+        logger.info(f"=== WeChat sync complete: {stats} ===")
+        return stats
+
+    except Exception as e:
+        logger.error(f"WeChat sync failed: {e}", exc_info=True)
+        return {"added": 0, "updated": 0, "skipped": 0, "errors": 1, "error_msg": str(e)}

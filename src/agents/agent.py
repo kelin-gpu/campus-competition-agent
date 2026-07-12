@@ -22,6 +22,8 @@ from tools.sync_tools import (
     enrich_single_event_tool,
     get_sync_status,
     start_scheduled_sync,
+    trigger_wechat_sync,
+    list_wechat_sources,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +91,8 @@ def build_agent(ctx=None):
         enrich_single_event_tool,
         get_sync_status,
         start_scheduled_sync,
+        trigger_wechat_sync,
+        list_wechat_sources,
     ]
 
     agent = create_agent(

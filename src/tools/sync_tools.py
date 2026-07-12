@@ -97,10 +97,47 @@ def get_sync_status() -> str:
 
 @tool
 def start_scheduled_sync() -> str:
-    """启动定时数据同步任务（每天凌晨2点自动执行全量同步）。"""
+    """启动定时数据同步任务（每天凌晨2点自动执行全量同步，每6小时执行微信公众号增量同步）。"""
     try:
         from tools.scheduled_sync import start_scheduler
         start_scheduler()
-        return "定时同步已启动！每天凌晨2:00将自动执行全量数据同步。"
+        return "定时同步已启动！\n- 每天凌晨2:00：全量数据同步（教育部+赛氪+微信公众号）\n- 每6小时：微信公众号增量同步"
     except Exception as e:
         return f"启动定时同步失败：{str(e)}"
+
+
+@tool
+def trigger_wechat_sync(hours: int = 6) -> str:
+    """手动触发微信公众号数据同步：抓取过去N小时内南京大学相关公众号发布的竞赛/活动信息，经AI补全后入库。
+    默认抓取过去6小时的文章。"""
+    ctx = request_context.get() or new_context(method="trigger_wechat_sync")
+    try:
+        from tools.data_sync_workflow import run_wechat_sync
+        stats = run_wechat_sync(hours=hours, ctx=ctx)
+        return (
+            f"微信公众号同步完成（过去{hours}小时）！\n"
+            f"- 新增：{stats['added']} 条\n"
+            f"- 更新：{stats['updated']} 条\n"
+            f"- 跳过：{stats['skipped']} 条\n"
+            f"- 错误：{stats['errors']} 条"
+        )
+    except Exception as e:
+        logger.error(f"WeChat sync failed: {e}", exc_info=True)
+        return f"微信公众号同步失败：{str(e)}"
+
+
+@tool
+def list_wechat_sources() -> str:
+    """列出当前监控的微信公众号列表及其描述。"""
+    try:
+        from tools.wechat_crawler import get_wechat_accounts
+        accounts = get_wechat_accounts()
+        if not accounts:
+            return "当前未配置监控的公众号。"
+        lines = ["当前监控的微信公众号：\n"]
+        for i, acc in enumerate(accounts, 1):
+            lines.append(f"{i}. **{acc['name']}** — {acc['desc']}")
+        lines.append(f"\n共 {len(accounts)} 个公众号，每6小时自动抓取一次。")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"查询公众号列表失败：{str(e)}"
