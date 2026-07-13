@@ -4,349 +4,449 @@
     "detail_text": "蓝桥杯大赛由工信部人才交流中心主办，是全国知名的IT类学科竞赛。第十六届蓝桥杯省赛即将启动报名，设置C/C++程序设计、Java程序设计、Python程序设计、Web应用开发等赛道。参赛对象为全日制在校本科生及研究生。省赛一等奖及以上可晋级国赛。获奖证书由工信部人才交流中心和中国电子学会联合颁发，对保研和综测有重要参考价值。报名时间：2026年1月-3月，省赛时间：2026年4月中旬。",
     "url": "https://www.saikr.com/comp/lanqiao-2026",
     "signup_deadline": "2026-03-15",
-    "organizer": "工信部人才交流中心"
+    "organizer": "工信部人才交流中心",
+    "detail_url": "https://www.saikr.com/vse/lanqiao/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生数学建模竞赛",
     "detail_text": "全国大学生数学建模竞赛创办于1992年，每年一届，是首批列入高校学科竞赛排行榜的赛事之一。竞赛由教育部高等教育司和中国工业与应用数学学会共同主办。参赛队由3名大学生组成，在72小时内完成一篇论文。比赛时间一般在每年9月第一个周末。获奖对保研加分、综测加分均有显著帮助。报名时间一般为每年5-6月。适合数学、计算机、物理、工程等专业学生参加。",
     "url": "https://www.saikr.com/comp/mcm-2026",
     "signup_deadline": "2026-06-10",
-    "organizer": "中国工业与应用数学学会"
+    "organizer": "中国工业与应用数学学会",
+    "detail_url": "https://www.saikr.com/vse/cmm/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年美国大学生数学建模竞赛(MCM/ICM)",
     "detail_text": "MCM/ICM由美国数学及其应用联合会(COMAP)主办，是全球最具影响力的数学建模竞赛。三人组队，4天内完成一篇英文论文。竞赛设置A、B、C、D、E、F六道题目。MCM侧重数学建模，ICM侧重交叉学科。获奖证书含金量极高，是保研加分的重要参考。报名时间一般为每年1月，比赛时间为2月初。适合数学、计算机、统计、经济等专业学生。",
     "url": "https://www.saikr.com/comp/mcm-icm-2026",
     "signup_deadline": "2026-01-15",
-    "organizer": "COMAP"
+    "organizer": "COMAP",
+    "detail_url": "https://www.saikr.com/vse/mcm-icm/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年ACM-ICPC国际大学生程序设计竞赛亚洲区域赛",
     "detail_text": "ACM国际大学生程序设计竞赛是全球历史最悠久、规模最大的大学生程序设计竞赛。三人一队，使用一台电脑在5小时内解决10-13道算法题。亚洲区域赛设多个站点，获奖队伍晋级World Finals。参赛需要扎实的算法基础和团队协作能力，对计算机专业学生保研有极高加分价值。一般9-10月报名，11-12月比赛。",
     "url": "https://www.saikr.com/comp/acm-icpc-2026",
     "signup_deadline": "2026-09-20",
-    "organizer": "ACM国际计算机学会"
+    "organizer": "ACM国际计算机学会",
+    "detail_url": "https://www.saikr.com/vse/icpc/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "第十五届泰迪杯数据挖掘挑战赛",
     "detail_text": "泰迪杯数据挖掘挑战赛面向全国高校在校生，旨在提升学生数据分析和数据挖掘能力。赛题来源于企业真实场景，涵盖数据分析、机器学习、深度学习等技术。参赛形式为个人赛或最多3人组队。报名截止一般在每年5月，提交作品截止7月。获奖可获综测加分，优秀作品有机会获得企业实习机会。适合计算机、统计、数据科学等专业学生。",
     "url": "https://www.saikr.com/comp/teddy-cup-2026",
     "signup_deadline": "2026-05-20",
-    "organizer": "广东泰迪智能科技股份有限公司"
+    "organizer": "广东泰迪智能科技股份有限公司",
+    "detail_url": "https://www.saikr.com/vse/teddy-cup/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生电子商务创新创意创业挑战赛",
     "detail_text": "三创赛是教育部认可的全国性A类赛事，由教育部高等学校电子商务类专业教学指导委员会主办。大赛以创新、创意、创业为核心，鼓励学生围绕电子商务领域进行创新实践。参赛团队3-5人，需提交商业计划书和Demo。校赛一般在4-5月，国赛在7-8月。获奖对保研和综测均有加分。适合电子商务、计算机、管理学等专业学生。",
     "url": "https://www.saikr.com/comp/3chuang-2026",
     "signup_deadline": "2026-04-25",
-    "organizer": "教育部高等学校电子商务类专业教学指导委员会"
+    "organizer": "教育部高等学校电子商务类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/3chuang/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年中国大学生计算机设计大赛",
     "detail_text": "中国大学生计算机设计大赛由教育部高等学校计算机科学与技术教学指导委员会等联合主办，是全国性高水平学术科技类竞赛。大赛设置软件应用与开发、微课与教学辅助、大数据主题、人工智能主题、信息可视化等多个类别。参赛团队1-3人。校赛一般在3-4月，国赛在7-8月。获奖证书含金量高，对保研综测加分有帮助。适合计算机、设计、数字媒体等专业学生。",
     "url": "https://www.saikr.com/comp/4c-2026",
     "signup_deadline": "2026-04-15",
-    "organizer": "教育部高等学校计算机科学与技术教学指导委员会"
+    "organizer": "教育部高等学校计算机科学与技术教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/4c/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年互联网+大学生创新创业大赛",
     "detail_text": "中国国际互联网+大学生创新创业大赛由教育部主办，是目前国内层次最高、覆盖面最广的大学生创新创业赛事。大赛设高教主赛道、青年红色筑梦之旅赛道、产业命题赛道等。参赛团队需提交商业计划书和路演PPT。校赛一般在5-6月，省赛7-8月，国赛10月。金奖项目保研加分极高。适合所有专业学生，尤其创新创业方向。",
     "url": "https://www.saikr.com/comp/internet-plus-2026",
     "signup_deadline": "2026-05-30",
-    "organizer": "教育部"
+    "organizer": "教育部",
+    "detail_url": "https://www.saikr.com/vse/internet-plus/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年挑战杯全国大学生课外学术科技作品竞赛",
     "detail_text": "挑战杯被誉为中国大学生科技创新的奥林匹克，由共青团中央、中国科协、教育部联合主办。参赛作品分为自然科学类学术论文、哲学社会科学类社会调查报告和科技发明制作三类。参赛团队一般3-5人，需有导师指导。校赛4-5月，省赛9-10月，国赛11月。获奖对保研有重大加分。适合有科研经历的学生。",
     "url": "https://www.saikr.com/comp/tiaozhanbei-2026",
     "signup_deadline": "2026-04-30",
-    "organizer": "共青团中央"
+    "organizer": "共青团中央",
+    "detail_url": "https://www.saikr.com/vse/tiaozhanbei/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生英语竞赛(NECCS)",
     "detail_text": "全国大学生英语竞赛由高等学校大学外语教学指导委员会和高等学校大学外语教学研究会主办，是全国性的大学生英语综合能力竞赛。分为ABCD四个类别。初赛一般在4月，决赛5月。获奖对综测和英语能力证明有很大帮助。适合所有专业学生。",
     "url": "https://www.saikr.com/comp/neccs-2026",
     "signup_deadline": "2026-03-20",
-    "organizer": "高等学校大学外语教学指导委员会"
+    "organizer": "高等学校大学外语教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/neccs/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生物理学术竞赛(CUPT)",
     "detail_text": "全国大学生物理学术竞赛参照国际青年物理学家锦标赛(IYPT)模式，由教育部高等学校物理学类教学指导委员会主办。参赛队伍5人，围绕公布的物理问题进行理论分析和实验研究，以团队对抗方式进行。报名3-4月，比赛7-8月。获奖对物理相关专业保研有加分。适合物理、工程等专业学生。",
     "url": "https://www.saikr.com/comp/cupt-2026",
     "signup_deadline": "2026-04-10",
-    "organizer": "教育部高等学校物理学类教学指导委员会"
+    "organizer": "教育部高等学校物理学类教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/cupt/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生电子设计竞赛",
     "detail_text": "全国大学生电子设计竞赛由教育部和工业和信息化部共同发起，是全国最具影响力的大学生电子类学科竞赛之一。竞赛采取半封闭方式，参赛队3人，在4天3夜内完成指定题目的设计与制作。竞赛一般在7-8月举行。获奖对电子信息类专业保研加分显著。",
     "url": "https://www.saikr.com/comp/nuedc-2026",
     "signup_deadline": "2026-06-15",
-    "organizer": "教育部高等学校电子信息类专业教学指导委员会"
+    "organizer": "教育部高等学校电子信息类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/nuedc/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年中国高校计算机大赛-团体程序设计天梯赛",
     "detail_text": "团体程序设计天梯赛由教育部高等学校计算机类教学指导委员会主办。每校可派多支队伍，每队10人，以个人赛+团体赛方式进行。比赛一般在3-4月。参赛门槛相对较低，适合低年级学生锻炼。获奖对综测加分有帮助。",
     "url": "https://www.saikr.com/comp/gplt-2026",
     "signup_deadline": "2026-03-01",
-    "organizer": "教育部高等学校计算机类教学指导委员会"
+    "organizer": "教育部高等学校计算机类教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/gplt/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年RoboMaster机甲大师赛",
     "detail_text": "RoboMaster机甲大师赛由大疆创新主办，是全球最大的机器人赛事之一。参赛队伍需自行设计、制造机器人，进行机器人对抗。团队成员涵盖机械、电子、软件、视觉等多学科。报名一般9-11月，次年8月比赛。参赛经历对保研和求职都有极高价值。",
     "url": "https://www.saikr.com/comp/robomaster-2026",
     "signup_deadline": "2026-10-15",
-    "organizer": "大疆创新"
+    "organizer": "大疆创新",
+    "detail_url": "https://www.saikr.com/vse/robomaster/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生智能汽车竞赛",
     "detail_text": "全国大学生智能汽车竞赛由教育部高等学校自动化类教学指导委员会主办。参赛队伍设计并制作智能汽车，在指定赛道上进行竞速。设置多个组别。报名3-5月，比赛7-8月。获奖对自动化、电子等专业保研加分。",
     "url": "https://www.saikr.com/comp/smartcar-2026",
     "signup_deadline": "2026-05-01",
-    "organizer": "教育部高等学校自动化类教学指导委员会"
+    "organizer": "教育部高等学校自动化类教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/smartcar/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生信息安全竞赛",
     "detail_text": "全国大学生信息安全竞赛由教育部高等学校网络空间安全专业教学指导委员会主办。竞赛包含知识赛和创新实践赛。创新实践赛需提交信息安全作品方案。报名4-5月，比赛7-8月。获奖对信息安全方向保研有重要加分。",
     "url": "https://www.saikr.com/comp/cisc-2026",
     "signup_deadline": "2026-05-15",
-    "organizer": "教育部高等学校网络空间安全专业教学指导委员会"
+    "organizer": "教育部高等学校网络空间安全专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/cisc/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年CTF全国大学生网络安全攻防竞赛",
     "detail_text": "CTF网络安全攻防竞赛面向全国高校学生，考察Web安全、密码学、逆向工程、PWN等方向技能。比赛形式为线上解题赛+线下决赛。报名5月，线上赛6月，决赛8月。获奖对网络安全方向保研和就业都有很高价值。",
     "url": "https://www.saikr.com/comp/ctf-2026",
     "signup_deadline": "2026-05-30",
-    "organizer": "中国网络空间安全协会"
+    "organizer": "中国网络空间安全协会",
+    "detail_url": "https://www.saikr.com/vse/ctf/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生结构设计竞赛",
     "detail_text": "全国大学生结构设计竞赛由教育部高等学校土木工程专业教学指导分委员会主办。参赛队3人，现场使用指定材料制作结构模型并进行加载试验。报名4-5月，比赛10月。获奖对土木工程专业保研加分显著。",
     "url": "https://www.saikr.com/comp/struct-2026",
     "signup_deadline": "2026-05-10",
-    "organizer": "教育部高等学校土木工程专业教学指导分委员会"
+    "organizer": "教育部高等学校土木工程专业教学指导分委员会",
+    "detail_url": "https://www.saikr.com/vse/struct/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生化工设计竞赛",
     "detail_text": "全国大学生化工设计竞赛由教育部高等学校化工类专业教学指导委员会主办。参赛队5人，使用Aspen Plus等软件完成化工流程设计。报名3-4月，分区赛7月，全国赛8月。获奖对化工专业保研加分。",
     "url": "https://www.saikr.com/comp/chemeng-2026",
     "signup_deadline": "2026-04-20",
-    "organizer": "教育部高等学校化工类专业教学指导委员会"
+    "organizer": "教育部高等学校化工类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/chemeng/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生节能减排社会实践与科技竞赛",
     "detail_text": "全国大学生节能减排社会实践与科技竞赛由教育部高等学校能源动力类专业教学指导委员会主办。参赛作品包括科技作品和社会实践调查报告。参赛团队1-5人。报名4-5月，比赛8月。获奖对能源环境相关专业保研综测加分。",
     "url": "https://www.saikr.com/comp/energy-2026",
     "signup_deadline": "2026-05-20",
-    "organizer": "教育部高等学校能源动力类专业教学指导委员会"
+    "organizer": "教育部高等学校能源动力类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/energy/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生交通科技大赛",
     "detail_text": "全国大学生交通科技大赛由教育部高等学校交通运输类教学指导委员会主办。参赛作品围绕交通运输领域的热点问题进行设计。参赛团队1-3人。报名3-4月，比赛5-6月。获奖对交通工程专业保研加分。",
     "url": "https://www.saikr.com/comp/transport-2026",
     "signup_deadline": "2026-04-05",
-    "organizer": "教育部高等学校交通运输类教学指导委员会"
+    "organizer": "教育部高等学校交通运输类教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/transport/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生统计建模大赛",
     "detail_text": "全国大学生统计建模大赛由中国统计教育学会主办。参赛团队1-3人，提交统计建模论文。报名4-5月，作品提交7月，评审8月。获奖对统计、数据科学等专业保研综测加分。",
     "url": "https://www.saikr.com/comp/statmodel-2026",
     "signup_deadline": "2026-05-15",
-    "organizer": "中国统计教育学会"
+    "organizer": "中国统计教育学会",
+    "detail_url": "https://www.saikr.com/vse/statmodel/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年中国机器人大赛",
     "detail_text": "中国机器人大赛由中国自动化学会主办，是国内规模最大的机器人赛事之一。设置多个比赛项目。参赛团队2-5人。报名5-6月，比赛10-11月。获奖对自动化、机器人方向保研加分。",
     "url": "https://www.saikr.com/comp/robot-2026",
     "signup_deadline": "2026-06-30",
-    "organizer": "中国自动化学会"
+    "organizer": "中国自动化学会",
+    "detail_url": "https://www.saikr.com/vse/robot/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生集成电路创新创业大赛",
     "detail_text": "全国大学生集成电路创新创业大赛由工信部人才交流中心主办。赛题由企业出题，涵盖FPGA设计、模拟IC、数字IC等方向。参赛团队1-3人。报名3-5月，分赛区赛7月，全国赛8月。获奖对集成电路方向保研和就业都有帮助。",
     "url": "https://www.saikr.com/comp/cic-2026",
     "signup_deadline": "2026-05-01",
-    "organizer": "工信部人才交流中心"
+    "organizer": "工信部人才交流中心",
+    "detail_url": "https://www.saikr.com/vse/cic/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生生物医学工程创新设计竞赛",
     "detail_text": "全国大学生生物医学工程创新设计竞赛由教育部高等学校生物医学工程类专业教学指导委员会主办。参赛作品包括生物医学仪器、医学影像处理、生物材料等方向。参赛团队1-3人。报名5-6月，比赛8月。",
     "url": "https://www.saikr.com/comp/bme-2026",
     "signup_deadline": "2026-06-15",
-    "organizer": "教育部高等学校生物医学工程类专业教学指导委员会"
+    "organizer": "教育部高等学校生物医学工程类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/bme/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生市场调查与分析大赛",
     "detail_text": "全国大学生市场调查与分析大赛由教育部高等学校统计学类专业教学指导委员会主办。参赛团队3-5人，围绕指定主题进行市场调查并撰写分析报告。报名10-12月，校赛3月，国赛5月。获奖对统计、市场营销等专业保研综测加分。",
     "url": "https://www.saikr.com/comp/marketresearch-2026",
     "signup_deadline": "2026-03-10",
-    "organizer": "教育部高等学校统计学类专业教学指导委员会"
+    "organizer": "教育部高等学校统计学类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/market-research/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生广告艺术大赛",
     "detail_text": "全国大学生广告艺术大赛由中国广告教育研究会主办。设置平面、视频、动画、策划等多个类别。参赛可以个人或团队形式。报名3-5月，作品提交6月。获奖对设计、广告、传媒类专业综测加分有帮助。",
     "url": "https://www.saikr.com/comp/adart-2026",
     "signup_deadline": "2026-05-30",
-    "organizer": "中国广告教育研究会"
+    "organizer": "中国广告教育研究会",
+    "detail_url": "https://www.saikr.com/vse/ad-art/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年中国大学生程序设计竞赛(CCPC)",
     "detail_text": "中国大学生程序设计竞赛由教育部高等学校计算机类教学指导委员会主办。三人组队，5小时内解决10-13道算法题。设网络赛、分站赛和总决赛。报名9月，比赛10-12月。获奖对计算机专业保研加分极高。",
     "url": "https://www.saikr.com/comp/ccpc-2026",
     "signup_deadline": "2026-09-15",
-    "organizer": "教育部高等学校计算机类教学指导委员会"
+    "organizer": "教育部高等学校计算机类教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/ccpc/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生软件创新大赛",
     "detail_text": "全国大学生软件创新大赛由教育部高等学校软件工程教学指导委员会主办。赛题围绕软件工程前沿方向。参赛团队2-4人。报名5-6月，比赛9-10月。获奖对软件工程专业保研综测加分。",
     "url": "https://www.saikr.com/comp/software-2026",
     "signup_deadline": "2026-06-10",
-    "organizer": "教育部高等学校软件工程教学指导委员会"
+    "organizer": "教育部高等学校软件工程教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/software/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生物联网设计竞赛",
     "detail_text": "全国大学生物联网设计竞赛由教育部高等学校计算机类教学指导委员会主办。参赛团队设计并实现物联网应用系统。报名4-5月，分赛区赛7月，总决赛9月。获奖对物联网、计算机等专业保研综测加分。",
     "url": "https://www.saikr.com/comp/iot-2026",
     "signup_deadline": "2026-05-20",
-    "organizer": "教育部高等学校计算机类教学指导委员会"
+    "organizer": "教育部高等学校计算机类教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/iot/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年中国大学生服务外包创新创业大赛",
     "detail_text": "中国大学生服务外包创新创业大赛由教育部和商务部共同主办。赛题来源于企业真实需求。参赛团队3-5人。报名1-3月，初赛5月，决赛8月。获奖者有机会获得企业offer。",
     "url": "https://www.saikr.com/comp/fuwubao-2026",
     "signup_deadline": "2026-03-15",
-    "organizer": "教育部、商务部"
+    "organizer": "教育部、商务部",
+    "detail_url": "https://www.saikr.com/vse/fuwubao/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生工业设计大赛",
     "detail_text": "全国大学生工业设计大赛由教育部高等学校工业设计专业教学指导分委员会主办。参赛作品围绕年度主题进行产品设计。参赛个人或团队不超过3人。报名4-5月，作品提交7月。获奖对工业设计专业保研综测加分。",
     "url": "https://www.saikr.com/comp/industrialdesign-2026",
     "signup_deadline": "2026-05-15",
-    "organizer": "教育部高等学校工业设计专业教学指导分委员会"
+    "organizer": "教育部高等学校工业设计专业教学指导分委员会",
+    "detail_url": "https://www.saikr.com/vse/industrial-design/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生机械创新设计大赛",
     "detail_text": "全国大学生机械创新设计大赛由教育部高等学校机械基础课程教学指导分委员会主办。参赛作品围绕指定主题进行机械创新设计，需制作实物模型。参赛团队1-5人。报名3-5月，分区赛7月，全国赛8月。获奖对机械专业保研加分显著。",
     "url": "https://www.saikr.com/comp/mechdesign-2026",
     "signup_deadline": "2026-05-01",
-    "organizer": "教育部高等学校机械基础课程教学指导分委员会"
+    "organizer": "教育部高等学校机械基础课程教学指导分委员会",
+    "detail_url": "https://www.saikr.com/vse/mech-design/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年外研社杯全国英语阅读大赛",
     "detail_text": "外研社杯全国英语阅读大赛由外语教学与研究出版社主办。比赛分为校赛、复赛和决赛。考察学生的英语阅读理解能力和批判性思维。报名9-10月，校赛11月，决赛12月。获奖对综测和英语能力证明有帮助。",
     "url": "https://www.saikr.com/comp/reading-2026",
     "signup_deadline": "2026-10-15",
-    "organizer": "外语教学与研究出版社"
+    "organizer": "外语教学与研究出版社",
+    "detail_url": "https://www.saikr.com/vse/reading/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生数学竞赛",
     "detail_text": "全国大学生数学竞赛由中国数学会主办，分为数学专业组和非数学专业组。考察高等数学、线性代数等数学基础知识及数学分析能力。报名9-10月，初赛11月，决赛次年3月。获奖对数学相关专业保研加分显著。",
     "url": "https://www.saikr.com/comp/cmc-2026",
     "signup_deadline": "2026-10-01",
-    "organizer": "中国数学会"
+    "organizer": "中国数学会",
+    "detail_url": "https://www.saikr.com/vse/cmc/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生物理竞赛",
     "detail_text": "全国大学生物理竞赛由中国物理学会主办，分为物理专业组和非物理专业组。考察大学物理内容及物理思维能力。报名10月，初赛11月，决赛次年3月。获奖对物理相关专业保研加分。",
     "url": "https://www.saikr.com/comp/cpc-2026",
     "signup_deadline": "2026-10-20",
-    "organizer": "中国物理学会"
+    "organizer": "中国物理学会",
+    "detail_url": "https://www.saikr.com/vse/cpc/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生化学奥林匹克竞赛",
     "detail_text": "全国大学生化学实验邀请赛由中国化学会主办，是化学学科最高水平的大学生竞赛。考察化学实验技能和化学理论知识。报名5月，比赛7-8月。获奖对化学专业保研加分极高。",
     "url": "https://www.saikr.com/comp/chemolympic-2026",
     "signup_deadline": "2026-05-20",
-    "organizer": "中国化学会"
+    "organizer": "中国化学会",
+    "detail_url": "https://www.saikr.com/vse/chem-olympic/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生生命科学竞赛",
     "detail_text": "全国大学生生命科学竞赛由教育部高等学校生物科学类教学指导委员会主办。参赛作品包括科学研究论文和创新创业项目。参赛团队1-5人，需有导师指导。报名3-5月，提交作品7月。获奖对生命科学相关专业保研加分。",
     "url": "https://www.saikr.com/comp/lifesci-2026",
     "signup_deadline": "2026-05-30",
-    "organizer": "教育部高等学校生物科学类教学指导委员会"
+    "organizer": "教育部高等学校生物科学类教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/lifesci/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生金融创新大赛",
     "detail_text": "全国大学生金融创新大赛由教育部高等学校金融学类专业教学指导委员会主办。赛题涵盖金融产品设计、量化交易策略、金融科技应用等。参赛团队3-5人。报名4-5月，比赛7-8月。获奖对金融专业保研综测加分。",
     "url": "https://www.saikr.com/comp/finance-2026",
     "signup_deadline": "2026-05-10",
-    "organizer": "教育部高等学校金融学类专业教学指导委员会"
+    "organizer": "教育部高等学校金融学类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/finance/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生物流设计大赛",
     "detail_text": "全国大学生物流设计大赛由教育部高等学校物流管理与工程类专业教学指导委员会主办。赛题来源于企业物流实际案例。参赛团队3-5人。报名11-1月，校赛3月，国赛5月。获奖对物流管理专业保研综测加分。",
     "url": "https://www.saikr.com/comp/logistics-2026",
     "signup_deadline": "2026-01-15",
-    "organizer": "教育部高等学校物流管理与工程类专业教学指导委员会"
+    "organizer": "教育部高等学校物流管理与工程类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/logistics/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生法律职业能力竞赛",
     "detail_text": "全国大学生法律职业能力竞赛由教育部高等学校法学类专业教学指导委员会主办。竞赛包括法律文书写作、模拟法庭等环节。参赛团队3-5人。报名4-5月，比赛9-10月。获奖对法学专业保研综测加分。",
     "url": "https://www.saikr.com/comp/law-2026",
     "signup_deadline": "2026-05-20",
-    "organizer": "教育部高等学校法学类专业教学指导委员会"
+    "organizer": "教育部高等学校法学类专业教学指导委员会",
+    "detail_url": "https://www.saikr.com/vse/law/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年Kaggle大学生数据分析挑战赛",
     "detail_text": "Kaggle数据分析挑战赛面向全国高校在校生。参赛个人或团队不超过3人，使用Python/R进行数据分析和建模。比赛时间根据Kaggle平台赛程确定。获奖对数据科学方向保研综测加分，同时丰富个人项目经历。",
     "url": "https://www.saikr.com/comp/kaggle-2026",
     "signup_deadline": "2026-08-01",
-    "organizer": "Kaggle"
+    "organizer": "Kaggle",
+    "detail_url": "https://www.saikr.com/vse/kaggle/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年华为软件精英挑战赛",
     "detail_text": "华为软件精英挑战赛由华为公司主办，是ICT领域知名的大学生赛事。赛题围绕云计算、AI、5G等前沿技术。参赛团队3人。报名2-3月，分区赛4-5月，决赛6月。获奖者有机会获得华为实习和校招绿卡。",
     "url": "https://www.saikr.com/comp/huawei-2026",
     "signup_deadline": "2026-03-20",
-    "organizer": "华为技术有限公司"
+    "organizer": "华为技术有限公司",
+    "detail_url": "https://www.saikr.com/vse/huawei/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年腾讯广告算法大赛",
     "detail_text": "腾讯广告算法大赛由腾讯公司主办，以广告推荐算法为赛题。参赛个人或团队不超过3人。报名4-5月，比赛6-7月。获奖者有机会获得腾讯面试直通卡。获奖对AI/算法方向保研和就业都有帮助。",
     "url": "https://www.saikr.com/comp/tencent-ad-2026",
     "signup_deadline": "2026-05-15",
-    "organizer": "腾讯"
+    "organizer": "腾讯",
+    "detail_url": "https://www.saikr.com/vse/tencent-ad/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年阿里天池大数据竞赛",
     "detail_text": "阿里天池大数据竞赛由阿里巴巴天池平台主办，赛题来源于阿里业务场景的真实数据问题。涵盖推荐系统、自然语言处理、计算机视觉等方向。参赛个人或团队不超过3人。比赛时间根据具体赛题确定。获奖对数据科学/AI方向保研和就业都有很高价值。",
     "url": "https://www.saikr.com/comp/tianchi-2026",
     "signup_deadline": "2026-06-01",
-    "organizer": "阿里巴巴"
+    "organizer": "阿里巴巴",
+    "detail_url": "https://www.saikr.com/vse/tianchi/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生创新创业训练计划项目",
     "detail_text": "大学生创新创业训练计划由教育部高等教育司主管。分为创新训练项目、创业训练项目和创业实践项目三类。项目需有指导教师，执行周期一般为1年。校级项目3-4月申报。结题后可获综测加分，国家级项目对保研加分显著。",
     "url": "https://www.saikr.com/comp/dachuang-2026",
     "signup_deadline": "2026-04-15",
-    "organizer": "教育部高等教育司"
+    "organizer": "教育部高等教育司",
+    "detail_url": "https://www.saikr.com/vse/dachuang/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生数字媒体科技作品及创意竞赛",
     "detail_text": "全国大学生数字媒体科技作品及创意竞赛由中国人工智能学会主办。作品涵盖VR/AR、数字动画、交互设计、游戏设计等方向。参赛团队1-3人。报名5-6月，作品提交8月。获奖对数字媒体专业保研综测加分。",
     "url": "https://www.saikr.com/comp/digitalmedia-2026",
     "signup_deadline": "2026-06-20",
-    "organizer": "中国人工智能学会"
+    "organizer": "中国人工智能学会",
+    "detail_url": "https://www.saikr.com/vse/digital-media/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生区块链技术创新大赛",
     "detail_text": "全国大学生区块链技术创新大赛由中国计算机学会主办。赛题涵盖智能合约开发、DApp应用、区块链底层技术等方向。参赛团队1-3人。报名4-5月，比赛7-8月。获奖对区块链方向保研综测加分。",
     "url": "https://www.saikr.com/comp/blockchain-2026",
     "signup_deadline": "2026-05-25",
-    "organizer": "中国计算机学会"
+    "organizer": "中国计算机学会",
+    "detail_url": "https://www.saikr.com/vse/blockchain/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年全国大学生人工智能创新大赛",
     "detail_text": "全国大学生人工智能创新大赛由中国人工智能学会主办。赛题涵盖计算机视觉、自然语言处理、语音识别、强化学习等方向。参赛团队1-3人。报名4-5月，比赛8-9月。获奖对AI方向保研加分显著。",
     "url": "https://www.saikr.com/comp/ai-contest-2026",
     "signup_deadline": "2026-05-30",
-    "organizer": "中国人工智能学会"
+    "organizer": "中国人工智能学会",
+    "detail_url": "https://www.saikr.com/vse/ai-contest/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   },
   {
     "title": "2026年百度之星程序设计大赛",
     "detail_text": "百度之星程序设计大赛由百度公司主办。比赛分为初赛和决赛，考察算法设计和编程实现能力。参赛为个人赛。报名6月，初赛7月，决赛8月。获奖者有机会获得百度实习和校招面试机会。",
     "url": "https://www.saikr.com/comp/baidustar-2026",
     "signup_deadline": "2026-06-30",
-    "organizer": "百度"
+    "organizer": "百度",
+    "detail_url": "https://www.saikr.com/vse/baidustar/2026",
+    "source_url": "https://www.saikr.com/index/hot/contest"
   }
 ]

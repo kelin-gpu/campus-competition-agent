@@ -103,7 +103,8 @@ def _build_enrichment_prompt(raw_event: dict, ministry_match: Optional[dict] = N
     """构建LLM提取提示词"""
     title = raw_event.get("title", "")
     detail_text = raw_event.get("detail_text", "")
-    url = raw_event.get("url", "")
+    # 优先使用 detail_url（详情页），而非 url（可能是列表页）
+    url = raw_event.get("detail_url") or raw_event.get("url", "")
     organizer = raw_event.get("organizer", "")
 
     ministry_hint = ""
@@ -257,7 +258,7 @@ def _rule_based_fallback(raw_event: dict, ministry_match: Optional[dict] = None)
         "tags": json.dumps(["竞赛"], ensure_ascii=False),
         "policy_tags": json.dumps(["综测加分"], ensure_ascii=False),
         "organizer": raw_event.get("organizer", ""),
-        "source_url": raw_event.get("url", ""),
+        "source_url": raw_event.get("detail_url") or raw_event.get("url", ""),
         "source_name": "赛氪",
         "authority_level": "中",
         "status": "报名中",
