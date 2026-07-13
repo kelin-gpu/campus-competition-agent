@@ -128,28 +128,34 @@ def trigger_wechat_sync(hours: int = 6) -> str:
 
 @tool
 def list_wechat_sources() -> str:
-    """列出当前监控的微信公众号列表，区分核心公众号和动态发现的公众号。"""
+    """列出当前监控的微信公众号列表，按校级核心/院系扩展/动态发现三类展示。"""
     try:
         from tools.wechat_data_source import get_wechat_sources
         result = get_wechat_sources()
-        core = result["core"]
+        school_level = result["school_level"]
+        college = result["college"]
         dynamic = result["dynamic"]
         total = result["total"]
 
         lines = [f"当前监控的微信公众号（共 {total} 个）：\n"]
 
-        lines.append("### 核心公众号（7个，永久保留）")
-        for i, acc in enumerate(core, 1):
+        lines.append(f"### 一、校级核心（{len(school_level)}个，永久保留）")
+        for i, acc in enumerate(school_level, 1):
+            lines.append(f"{i}. **{acc['name']}** — {acc['desc']}")
+
+        lines.append(f"\n### 二、院系扩展（{len(college)}个，永久保留）")
+        for i, acc in enumerate(college, 1):
             lines.append(f"{i}. **{acc['name']}** — {acc['desc']}")
 
         if dynamic:
-            lines.append(f"\n### 动态发现的公众号（{len(dynamic)}个）")
+            lines.append(f"\n### 三、动态发现（{len(dynamic)}个）")
             for i, acc in enumerate(dynamic, 1):
-                lines.append(f"{i+len(core)}. **{acc['name']}** — {acc['desc']}")
+                lines.append(f"{i}. **{acc['name']}** — {acc['desc']}")
         else:
-            lines.append("\n暂无动态发现的公众号（缓存为空或尚未执行发现）")
+            lines.append("\n### 三、动态发现\n暂无动态发现的公众号（缓存为空或尚未执行发现）")
 
-        lines.append(f"\n每6小时自动抓取一次，公众号列表每7天自动刷新。")
+        lines.append(f"\n抓取顺序：校级核心 → 院系扩展 → 动态发现")
+        lines.append(f"每6小时自动抓取一次，公众号列表每7天自动刷新。")
         return "\n".join(lines)
     except Exception as e:
         return f"查询公众号列表失败：{str(e)}"
@@ -158,16 +164,18 @@ def list_wechat_sources() -> str:
 @tool
 def refresh_wechat_accounts() -> str:
     """手动刷新微信公众号监控列表：重新搜索所有名称含'南京大学'的公众号，更新缓存。
-    核心7个公众号永远保留，动态发现的公众号会被更新。"""
+    校级核心7个+院系扩展48个永远保留，动态发现的公众号会被更新。"""
     try:
         from tools.wechat_data_source import refresh_wechat_accounts as _refresh
         result = _refresh()
-        core_count = result["core_count"]
+        school_level_count = result["school_level_count"]
+        college_count = result["college_count"]
         dynamic_count = result["dynamic_count"]
         total = result["total"]
         return (
             f"公众号列表刷新完成！\n"
-            f"- 核心公众号：{core_count} 个（永久保留）\n"
+            f"- 校级核心：{school_level_count} 个（永久保留）\n"
+            f"- 院系扩展：{college_count} 个（永久保留）\n"
             f"- 动态发现：{dynamic_count} 个\n"
             f"- 总计：{total} 个\n"
             f"缓存已更新，下次抓取将使用新列表。"

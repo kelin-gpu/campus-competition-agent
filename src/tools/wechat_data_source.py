@@ -115,16 +115,18 @@ def enrich_wechat_events(hours: int = 24, ctx=None) -> list:
 
 def get_wechat_sources() -> dict:
     """
-    获取当前监控的公众号列表，分类展示核心和动态发现的公众号
+    获取当前监控的公众号列表，按校级核心/院系扩展/动态发现三类展示
 
     Returns:
-        {"core": list, "dynamic": list, "total": int}
+        {"school_level": list, "college": list, "dynamic": list, "total": int}
     """
     accounts = get_wechat_accounts()
-    core = [a for a in accounts if a.get("is_core")]
-    dynamic = [a for a in accounts if not a.get("is_core")]
+    school_level = [a for a in accounts if a.get("category") == "school_level"]
+    college = [a for a in accounts if a.get("category") == "college"]
+    dynamic = [a for a in accounts if a.get("category") == "dynamic"]
     return {
-        "core": core,
+        "school_level": school_level,
+        "college": college,
         "dynamic": dynamic,
         "total": len(accounts),
     }
@@ -135,8 +137,16 @@ def refresh_wechat_accounts() -> dict:
     手动刷新公众号监控列表（绕过缓存，重新搜索）
 
     Returns:
-        {"core_count": int, "dynamic_count": int, "total": int}
+        {"school_level_count": int, "college_count": int, "dynamic_count": int, "total": int}
     """
     result = _refresh_accounts()
-    logger.info(f"Refreshed WeChat accounts: core={result['core_count']}, dynamic={result['dynamic_count']}, total={result['total']}")
+    # Re-fetch to get categorized counts
+    accounts = get_wechat_accounts()
+    school_level_count = len([a for a in accounts if a.get("category") == "school_level"])
+    college_count = len([a for a in accounts if a.get("category") == "college"])
+    dynamic_count = len([a for a in accounts if a.get("category") == "dynamic"])
+    result["school_level_count"] = school_level_count
+    result["college_count"] = college_count
+    result["dynamic_count"] = dynamic_count
+    logger.info(f"Refreshed WeChat accounts: school_level={school_level_count}, college={college_count}, dynamic={dynamic_count}, total={result['total']}")
     return result

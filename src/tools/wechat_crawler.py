@@ -31,14 +31,65 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 # 核心公众号列表（永远保留，不受动态发现影响）
+# 分类：school_level（校级核心）/ college（院系扩展）/ dynamic（动态发现）
 CORE_ACCOUNTS = [
-    {"name": "南京大学", "biz": "", "desc": "南京大学官方公众号", "is_core": True},
-    {"name": "南京大学团委", "biz": "", "desc": "共青团南京大学委员会", "is_core": True},
-    {"name": "南京大学学生会", "biz": "", "desc": "南京大学学生会", "is_core": True},
-    {"name": "南京大学教务处", "biz": "", "desc": "南京大学教务处", "is_core": True},
-    {"name": "南京大学研究生院", "biz": "", "desc": "南京大学研究生院", "is_core": True},
-    {"name": "南京大学就业创业指导中心", "biz": "", "desc": "就业创业指导", "is_core": True},
-    {"name": "南京大学健雄书院", "biz": "", "desc": "健雄书院", "is_core": True},
+    # ====== 校级核心（7个）======
+    {"name": "南京大学", "biz": "", "desc": "南京大学官方公众号", "is_core": True, "category": "school_level"},
+    {"name": "南京大学团委", "biz": "", "desc": "共青团南京大学委员会", "is_core": True, "category": "school_level"},
+    {"name": "南京大学学生会", "biz": "", "desc": "南京大学学生会", "is_core": True, "category": "school_level"},
+    {"name": "南京大学教务处", "biz": "", "desc": "南京大学教务处", "is_core": True, "category": "school_level"},
+    {"name": "南京大学研究生院", "biz": "", "desc": "南京大学研究生院", "is_core": True, "category": "school_level"},
+    {"name": "南京大学就业创业指导中心", "biz": "", "desc": "就业创业指导", "is_core": True, "category": "school_level"},
+    {"name": "南京大学健雄书院", "biz": "", "desc": "健雄书院", "is_core": True, "category": "school_level"},
+    # ====== 院系扩展（48个）======
+    {"name": "南京大学新生学院", "biz": "", "desc": "新生学院", "is_core": True, "category": "college"},
+    {"name": "南京大学文学院", "biz": "", "desc": "文学院", "is_core": True, "category": "college"},
+    {"name": "南京大学历史学院", "biz": "", "desc": "历史学院", "is_core": True, "category": "college"},
+    {"name": "南京大学哲学学院", "biz": "", "desc": "哲学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学新闻传播学院", "biz": "", "desc": "新闻传播学院", "is_core": True, "category": "college"},
+    {"name": "南京大学法学院", "biz": "", "desc": "法学院", "is_core": True, "category": "college"},
+    {"name": "南京大学商学院", "biz": "", "desc": "商学院", "is_core": True, "category": "college"},
+    {"name": "南京大学经济学院", "biz": "", "desc": "经济学院", "is_core": True, "category": "college"},
+    {"name": "南京大学管理学院", "biz": "", "desc": "管理学院", "is_core": True, "category": "college"},
+    {"name": "南京大学外国语学院", "biz": "", "desc": "外国语学院", "is_core": True, "category": "college"},
+    {"name": "南京大学政府管理学院", "biz": "", "desc": "政府管理学院", "is_core": True, "category": "college"},
+    {"name": "南京大学国际关系学院", "biz": "", "desc": "国际关系学院", "is_core": True, "category": "college"},
+    {"name": "南京大学信息管理学院", "biz": "", "desc": "信息管理学院", "is_core": True, "category": "college"},
+    {"name": "南京大学社会学院", "biz": "", "desc": "社会学院", "is_core": True, "category": "college"},
+    {"name": "南京大学数学学院", "biz": "", "desc": "数学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学物理学院", "biz": "", "desc": "物理学院", "is_core": True, "category": "college"},
+    {"name": "南京大学天文与空间科学学院", "biz": "", "desc": "天文与空间科学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学化学学院", "biz": "", "desc": "化学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学化工学院", "biz": "", "desc": "化工学院", "is_core": True, "category": "college"},
+    {"name": "南京大学计算机学院", "biz": "", "desc": "计算机学院", "is_core": True, "category": "college"},
+    {"name": "南京大学软件学院", "biz": "", "desc": "软件学院", "is_core": True, "category": "college"},
+    {"name": "南京大学人工智能学院", "biz": "", "desc": "人工智能学院", "is_core": True, "category": "college"},
+    {"name": "南京大学电子科学与工程学院", "biz": "", "desc": "电子科学与工程学院", "is_core": True, "category": "college"},
+    {"name": "南京大学现代工程与应用科学学院", "biz": "", "desc": "现代工程与应用科学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学环境学院", "biz": "", "desc": "环境学院", "is_core": True, "category": "college"},
+    {"name": "南京大学地球科学与工程学院", "biz": "", "desc": "地球科学与工程学院", "is_core": True, "category": "college"},
+    {"name": "南京大学地理与海洋科学学院", "biz": "", "desc": "地理与海洋科学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学大气科学学院", "biz": "", "desc": "大气科学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学南京赫尔辛基大气与地球系统科学学院", "biz": "", "desc": "南赫学院", "is_core": True, "category": "college"},
+    {"name": "南京大学生命科学学院", "biz": "", "desc": "生命科学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学医学院", "biz": "", "desc": "医学院", "is_core": True, "category": "college"},
+    {"name": "南京大学工程管理学院", "biz": "", "desc": "工程管理学院", "is_core": True, "category": "college"},
+    {"name": "南京大学匡亚明学院", "biz": "", "desc": "匡亚明学院", "is_core": True, "category": "college"},
+    {"name": "南京大学海外教育学院", "biz": "", "desc": "海外教育学院", "is_core": True, "category": "college"},
+    {"name": "南京大学建筑与城市规划学院", "biz": "", "desc": "建筑与城市规划学院", "is_core": True, "category": "college"},
+    {"name": "南京大学马克思主义学院", "biz": "", "desc": "马克思主义学院", "is_core": True, "category": "college"},
+    {"name": "南京大学艺术学院", "biz": "", "desc": "艺术学院", "is_core": True, "category": "college"},
+    {"name": "南京大学智能科学与技术学院", "biz": "", "desc": "智能科学与技术学院", "is_core": True, "category": "college"},
+    {"name": "南京大学智能软件与工程学院", "biz": "", "desc": "智能软件与工程学院", "is_core": True, "category": "college"},
+    {"name": "南京大学集成电路学院", "biz": "", "desc": "集成电路学院", "is_core": True, "category": "college"},
+    {"name": "南京大学数字经济与管理学院", "biz": "", "desc": "数字经济与管理学院", "is_core": True, "category": "college"},
+    {"name": "南京大学能源与资源学院", "biz": "", "desc": "能源与资源学院", "is_core": True, "category": "college"},
+    {"name": "南京大学国家卓越工程师学院", "biz": "", "desc": "国家卓越工程师学院", "is_core": True, "category": "college"},
+    {"name": "南京大学机器人与自动化学院", "biz": "", "desc": "机器人与自动化学院", "is_core": True, "category": "college"},
+    {"name": "南京大学未来技术学院", "biz": "", "desc": "未来技术学院", "is_core": True, "category": "college"},
+    {"name": "南京大学前沿科学学院", "biz": "", "desc": "前沿科学学院", "is_core": True, "category": "college"},
+    {"name": "南京大学先进制造学院", "biz": "", "desc": "先进制造学院", "is_core": True, "category": "college"},
+    {"name": "南京大学生物医学工程学院", "biz": "", "desc": "生物医学工程学院", "is_core": True, "category": "college"},
 ]
 
 # 向后兼容
@@ -273,13 +324,24 @@ def get_all_accounts(force_refresh: bool = False) -> list:
                 "name": name,
                 "desc": acc.get("desc", ""),
                 "is_core": False,
+                "category": "dynamic",
             })
 
-    # 5. 排序：核心在前，动态在后，各自按名称排序
-    core_list = sorted([a for a in all_accounts if a.get("is_core")], key=lambda x: x["name"])
-    dynamic_list = sorted([a for a in all_accounts if not a.get("is_core")], key=lambda x: x["name"])
+    # 5. 排序：校级核心 -> 院系扩展 -> 动态发现，各自按名称排序
+    school_level = sorted(
+        [a for a in all_accounts if a.get("category") == "school_level"],
+        key=lambda x: x["name"],
+    )
+    college = sorted(
+        [a for a in all_accounts if a.get("category") == "college"],
+        key=lambda x: x["name"],
+    )
+    dynamic_list = sorted(
+        [a for a in all_accounts if a.get("category") == "dynamic"],
+        key=lambda x: x["name"],
+    )
 
-    return core_list + dynamic_list
+    return school_level + college + dynamic_list
 
 
 # ============================================================
@@ -524,13 +586,14 @@ def crawl_wechat_events(hours: int = 24) -> list:
 
 
 def get_wechat_accounts() -> list:
-    """获取当前监控的公众号列表（核心 + 动态发现），含分类信息"""
+    """获取当前监控的公众号列表，含分类信息"""
     all_accounts = get_all_accounts()
     return [
         {
             "name": acc["name"],
             "desc": acc.get("desc", ""),
             "is_core": acc.get("is_core", False),
+            "category": acc.get("category", "dynamic"),
         }
         for acc in all_accounts
     ]
@@ -541,13 +604,15 @@ def refresh_wechat_accounts() -> dict:
     强制刷新公众号列表（绕过缓存）
 
     Returns:
-        {"core_count": int, "dynamic_count": int, "total": int, "accounts": list}
+        {"school_level_count": int, "college_count": int, "dynamic_count": int, "total": int, "accounts": list}
     """
     all_accounts = get_all_accounts(force_refresh=True)
-    core = [a for a in all_accounts if a.get("is_core")]
-    dynamic = [a for a in all_accounts if not a.get("is_core")]
+    school_level = [a for a in all_accounts if a.get("category") == "school_level"]
+    college = [a for a in all_accounts if a.get("category") == "college"]
+    dynamic = [a for a in all_accounts if a.get("category") == "dynamic"]
     return {
-        "core_count": len(core),
+        "school_level_count": len(school_level),
+        "college_count": len(college),
         "dynamic_count": len(dynamic),
         "total": len(all_accounts),
         "accounts": all_accounts,
