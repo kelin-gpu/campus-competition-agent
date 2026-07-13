@@ -3,7 +3,8 @@ from coze_coding_dev_sdk.database import Base
 from typing import Optional
 import datetime
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Double, Integer, Numeric, PrimaryKeyConstraint, String, Text, Index, text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Double, Integer, Numeric, PrimaryKeyConstraint, String, Text, Index, text, func
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.dialects.postgresql import OID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,6 +16,26 @@ class HealthCheck(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=text('now()'))
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profile"
+    __table_args__ = (
+        PrimaryKeyConstraint('user_id', name='user_profile_pkey'),
+        {'comment': '用户画像表'},
+    )
+
+    user_id: Mapped[str] = mapped_column(Text, primary_key=True, comment="用户唯一标识")
+    nickname: Mapped[Optional[str]] = mapped_column(Text, comment="昵称")
+    college: Mapped[Optional[str]] = mapped_column(Text, comment="学院")
+    major: Mapped[Optional[str]] = mapped_column(Text, comment="专业")
+    grade: Mapped[Optional[str]] = mapped_column(Text, comment="年级")
+    interest_tags: Mapped[Optional[dict]] = mapped_column(JSON, comment="兴趣标签JSON数组")
+    focus_contests: Mapped[Optional[dict]] = mapped_column(JSON, comment="关注竞赛ID列表")
+    notify_preference: Mapped[Optional[str]] = mapped_column(Text, server_default=text("'daily'"), comment="推送偏好")
+    last_active_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), comment="最后活跃时间")
+    create_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=func.now(), comment="创建时间")
+    update_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=func.now(), comment="更新时间")
 
 
 class EventInfo(Base):

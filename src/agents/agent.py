@@ -26,6 +26,14 @@ from tools.sync_tools import (
     list_wechat_sources,
     refresh_wechat_accounts,
 )
+from tools.knowledge_base import search_knowledge_base
+from tools.user_profile import (
+    get_user_profile,
+    update_user_profile,
+    add_focus_contest,
+    remove_focus_contest,
+    get_personalized_recommendations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +103,14 @@ def build_agent(ctx=None):
         trigger_wechat_sync,
         list_wechat_sources,
         refresh_wechat_accounts,
+        # 知识库 RAG
+        search_knowledge_base,
+        # 用户画像与个性化推荐
+        get_user_profile,
+        update_user_profile,
+        add_focus_contest,
+        remove_focus_contest,
+        get_personalized_recommendations,
     ]
 
     agent = create_agent(
