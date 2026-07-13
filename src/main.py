@@ -280,6 +280,13 @@ async def lifespan(app: FastAPI):
         session_factory=get_session, engine=engine,
         graph=async_graph, checkpointer=checkpointer,
     )
+    # 启动定时同步任务（每天凌晨2点全量同步 + 每6小时微信公众号增量同步）
+    try:
+        from tools.scheduled_sync import start_scheduler
+        start_scheduler()
+        logger.info("定时同步任务已启动")
+    except Exception as e:
+        logger.warning(f"定时同步任务启动失败: {e}")
     yield
     if async_runtime is not None:
         await async_runtime.shutdown()

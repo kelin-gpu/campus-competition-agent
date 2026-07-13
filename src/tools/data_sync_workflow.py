@@ -264,11 +264,25 @@ def run_full_sync(ctx=None) -> dict:
         }
         ministry_enriched.append(enriched)
 
-    # 3. 赛氪数据AI补全
+    # 3. 赛氪数据AI补全（带超时保护和降级）
     saikr_enriched = []
     if saikr_data:
         logger.info(f"Enriching {len(saikr_data)} saikr events with AI...")
-        saikr_enriched = enrich_batch(saikr_data, ctx=ctx)
+        try:
+            saikr_enriched = enrich_batch(saikr_data, ctx=ctx)
+            logger.info(f"AI enrichment completed: {len(saikr_enriched)} records")
+        except Exception as e:
+            logger.warning(f"AI enrichment failed ({e}), falling back to rule-based enrichment")
+            # 降级：用规则补全代替LLM
+            from tools.event_enrichment import _rule_based_fallback
+            saikr_enriched = []
+            for item in saikr_data:
+                fallback = _rule_based_fallback(item.get("detail_text", ""), item.get("title", ""))
+                fallback["source_url"] = item.get("source_url", "") or item.get("detail_url", "")
+                fallback["source_name"] = "赛氪"
+                fallback["title"] = item.get("title", "")
+                saikr_enriched.append(fallback)
+            logger.info(f"Rule-based fallback completed: {len(saikr_enriched)} records")
     else:
         logger.warning("Skipping saikr enrichment (no data crawled)")
 

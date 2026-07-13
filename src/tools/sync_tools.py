@@ -127,6 +127,48 @@ def trigger_wechat_sync(hours: int = 6) -> str:
 
 
 @tool
+def test_llm_available() -> str:
+    """测试LLM（大语言模型）是否可用。调用一次LLM生成一句话，验证Agent运行环境中的LLM服务是否正常。
+    如果返回成功说明LLM可用，AI补全功能可正常工作；如果失败说明LLM服务异常。"""
+    ctx = request_context.get() or new_context(method="test_llm_available")
+    try:
+        from coze_coding_dev_sdk import LLMClient
+        client = LLMClient(ctx=ctx)
+
+        # 尝试调用LLM生成一句话
+        import signal
+
+        def _timeout_handler(signum, frame):
+            raise TimeoutError("LLM调用超时(15秒)")
+
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(15)
+        try:
+            response = client.invoke(
+                messages=[
+                    {"role": "system", "content": "你是一个简洁的助手，回答不超过20个字。"},
+                    {"role": "user", "content": "请用一句话回答：1+1等于几？"}
+                ],
+                model="doubao-seed-2-0-lite-260215",
+                temperature=0.2,
+                max_completion_tokens=100
+            )
+            signal.alarm(0)
+            answer = response.content if hasattr(response, 'content') else str(response)
+            if isinstance(answer, list):
+                answer = " ".join(str(item) for item in answer)
+            return f"LLM测试结果：✅ 成功\nLLM回复：{str(answer)[:100]}\n结论：LLM服务正常，AI补全功能可用"
+        except TimeoutError:
+            signal.alarm(0)
+            return "LLM测试结果：❌ 超时\n原因：LLM调用超过15秒未返回\n影响：AI字段补全功能不可用，数据同步将使用规则降级模式"
+        finally:
+            signal.signal(signal.SIGALRM, old_handler)
+
+    except Exception as e:
+        return f"LLM测试结果：❌ 异常\n错误：{str(e)}\n影响：AI字段补全功能不可用，数据同步将使用规则降级模式"
+
+
+@tool
 def list_wechat_sources() -> str:
     """列出当前监控的微信公众号列表，按校级核心/院系扩展/动态发现三类展示。"""
     try:
