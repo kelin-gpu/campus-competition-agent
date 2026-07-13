@@ -111,15 +111,33 @@ def _determine_status(signup_deadline: Optional[str]) -> str:
 
 
 def load_saikr_data() -> list:
-    """加载赛氪爬虫数据"""
-    filepath = os.path.join(ASSETS_DIR, "saikr_processed.json")
+    """
+    从赛氪在线爬取热门竞赛数据。
+    如果爬取失败，返回空列表（不中断整体同步流程）。
+    """
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        logger.info(f"Loaded {len(data)} events from saikr data")
-        return data
+        from tools.saikr_crawler import crawl_saikr_hot_contests
+        logger.info("Crawling saikr hot contests online...")
+        result = crawl_saikr_hot_contests(limit=50, sleep_seconds=0.6)
+        records = result.get("records", [])
+        if not records:
+            logger.warning(f"Saikr crawler returned {len(records)} records (empty)")
+            return []
+        # 将爬虫输出标准化为 data_sync_workflow 期望的格式
+        events = []
+        for rec in records:
+            events.append({
+                "title": rec.get("title", ""),
+                "detail_text": rec.get("detail_text", ""),
+                "url": rec.get("detail_url", "") or rec.get("url", ""),
+                "source": "赛氪",
+                "source_url": rec.get("detail_url", "") or rec.get("url", ""),
+                "organizer": rec.get("organizer", ""),
+            })
+        logger.info(f"Crawled {len(events)} events from saikr.com")
+        return events
     except Exception as e:
-        logger.error(f"Failed to load saikr data: {e}")
+        logger.error(f"Failed to crawl saikr data (non-fatal): {e}")
         return []
 
 
@@ -219,6 +237,9 @@ def run_full_sync(ctx=None) -> dict:
     saikr_data = load_saikr_data()
     ministry_data = load_ministry_data()
 
+    if not saikr_data:
+        logger.warning("Saikr data is empty — will skip saikr enrichment but continue with other sources")
+
     # 2. 教育部目录数据直接标记（不需要AI补全）
     ministry_enriched = []
     for item in ministry_data:
@@ -244,8 +265,12 @@ def run_full_sync(ctx=None) -> dict:
         ministry_enriched.append(enriched)
 
     # 3. 赛氪数据AI补全
-    logger.info(f"Enriching {len(saikr_data)} saikr events with AI...")
-    saikr_enriched = enrich_batch(saikr_data, ctx=ctx)
+    saikr_enriched = []
+    if saikr_data:
+        logger.info(f"Enriching {len(saikr_data)} saikr events with AI...")
+        saikr_enriched = enrich_batch(saikr_data, ctx=ctx)
+    else:
+        logger.warning("Skipping saikr enrichment (no data crawled)")
 
     # 4. 微信公众号数据抓取 + AI补全
     wechat_enriched = []
