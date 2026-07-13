@@ -4,6 +4,7 @@
 """
 import json
 import logging
+import os
 
 from langchain.tools import tool
 from coze_coding_utils.log.write_log import request_context
@@ -133,7 +134,12 @@ def test_llm_available() -> str:
     ctx = request_context.get() or new_context(method="test_llm_available")
     try:
         from coze_coding_dev_sdk import LLMClient
-        client = LLMClient(ctx=ctx)
+        from coze_coding_dev_sdk.core.config import Config
+
+        api_key = os.getenv("COZE_WORKLOAD_IDENTITY_API_KEY")
+        base_url = os.getenv("COZE_INTEGRATION_MODEL_BASE_URL")
+        config = Config(api_key=api_key, base_url=base_url)
+        client = LLMClient(config=config, ctx=ctx)
 
         # 尝试调用LLM生成一句话
         import signal
@@ -144,10 +150,10 @@ def test_llm_available() -> str:
         old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(15)
         try:
+            from langchain_core.messages import HumanMessage
             response = client.invoke(
                 messages=[
-                    {"role": "system", "content": "你是一个简洁的助手，回答不超过20个字。"},
-                    {"role": "user", "content": "请用一句话回答：1+1等于几？"}
+                    HumanMessage(content="请用一句话回答：1+1等于几？回答不超过20个字。")
                 ],
                 model="doubao-seed-2-0-lite-260215",
                 temperature=0.2,
@@ -157,7 +163,8 @@ def test_llm_available() -> str:
             answer = response.content if hasattr(response, 'content') else str(response)
             if isinstance(answer, list):
                 answer = " ".join(str(item) for item in answer)
-            return f"LLM测试结果：✅ 成功\nLLM回复：{str(answer)[:100]}\n结论：LLM服务正常，AI补全功能可用"
+            model_name = response.response_metadata.get("model_name", "unknown") if hasattr(response, 'response_metadata') else "unknown"
+            return f"LLM测试结果：✅ 成功\n模型: {model_name}\nLLM回复：{str(answer)[:100]}\n结论：LLM服务正常，AI补全功能可用"
         except TimeoutError:
             signal.alarm(0)
             return "LLM测试结果：❌ 超时\n原因：LLM调用超过15秒未返回\n影响：AI字段补全功能不可用，数据同步将使用规则降级模式"
