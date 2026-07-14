@@ -231,3 +231,18 @@ def refresh_wechat_accounts() -> str:
         )
     except Exception as e:
         return f"刷新公众号列表失败：{str(e)}"
+
+
+@tool
+def cleanup_expired_events() -> str:
+    """清理数据库中报名截止时间已过的过期竞赛/活动记录。
+    这些记录不会再展示给学生，直接删除以保持数据库清洁。"""
+    ctx = request_context.get() or new_context(method="cleanup_expired")
+    try:
+        from tools.data_sync_workflow import _cleanup_expired, _get_supabase
+        supabase = _get_supabase()
+        deleted = _cleanup_expired(supabase)
+        return f"过期记录清理完成！共删除 {deleted} 条已截止的竞赛/活动记录。"
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}", exc_info=True)
+        return f"清理过期记录失败：{str(e)}"

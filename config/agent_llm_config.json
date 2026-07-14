@@ -22,6 +22,7 @@
         "trigger_wechat_sync",
         "list_wechat_sources",
         "refresh_wechat_accounts",
+        "cleanup_expired_events",
         "search_knowledge_base",
         "get_user_profile",
         "update_user_profile",

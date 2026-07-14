@@ -25,6 +25,7 @@ from tools.sync_tools import (
     trigger_wechat_sync,
     list_wechat_sources,
     refresh_wechat_accounts,
+    cleanup_expired_events,
 )
 from tools.knowledge_base import search_knowledge_base
 from tools.user_profile import (
@@ -103,6 +104,7 @@ def build_agent(ctx=None):
         trigger_wechat_sync,
         list_wechat_sources,
         refresh_wechat_accounts,
+        cleanup_expired_events,
         # 知识库 RAG
         search_knowledge_base,
         # 用户画像与个性化推荐
