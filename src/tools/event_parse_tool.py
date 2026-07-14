@@ -154,6 +154,24 @@ def _insert_event(event_data: dict) -> str:
     """插入事件到数据库（普通函数）"""
     ctx = request_context.get() or new_context(method="insert_event")
     client = _get_client()
+
+    # 时间线校验：event_time 不能早于 signup_deadline
+    deadline = event_data.get("signup_deadline")
+    event_time = event_data.get("event_time")
+    if deadline and event_time:
+        try:
+            from datetime import timezone
+            dl = datetime.fromisoformat(str(deadline).replace("+08:00", "+08:00"))
+            et = datetime.fromisoformat(str(event_time).replace("+08:00", "+08:00"))
+            if et < dl:
+                logger.warning(
+                    f"Timeline conflict in parsed event: event_time({event_time}) < "
+                    f"signup_deadline({deadline}) — clearing event_time"
+                )
+                event_data["event_time"] = None
+        except Exception:
+            pass
+
     try:
         response = client.table("event_info").insert(event_data).execute()
         data = response.data

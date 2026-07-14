@@ -122,6 +122,32 @@ def _is_expired(signup_deadline: Optional[str]) -> bool:
         return False
 
 
+def _validate_timeline(event: dict) -> dict:
+    """
+    交叉校验 event_time 和 signup_deadline 的时间线逻辑。
+    规则：event_time 必须 >= signup_deadline（比赛在报名截止之后举行）。
+    如果矛盾（event_time < signup_deadline），清空 event_time，因为无法判断哪个字段正确。
+    返回修正后的 event dict。
+    """
+    deadline = event.get("signup_deadline")
+    event_time = event.get("event_time")
+    if not deadline or not event_time:
+        return event
+    try:
+        from datetime import timezone
+        dl = datetime.fromisoformat(deadline.replace("+08:00", "+08:00"))
+        et = datetime.fromisoformat(event_time.replace("+08:00", "+08:00"))
+        if et < dl:
+            logger.warning(
+                f"Timeline conflict: event_time({event_time}) < signup_deadline({deadline}) "
+                f"for '{event.get('title', '')[:40]}' — clearing event_time"
+            )
+            event["event_time"] = None
+    except Exception:
+        pass
+    return event
+
+
 def load_saikr_data() -> list:
     """
     从赛氪在线爬取热门竞赛数据。
@@ -263,6 +289,9 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
                 stats["skipped"] += 1
                 stats["details"].append({"action": "skipped_expired", "title": title[:50]})
                 continue
+
+            # 入库前校验：event_time 不能早于 signup_deadline
+            event = _validate_timeline(event)
 
             # 去重检查
             existing = _find_existing_event(supabase, title)

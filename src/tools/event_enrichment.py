@@ -155,6 +155,7 @@ def _build_enrichment_prompt(raw_event: dict, ministry_match: Optional[dict] = N
 
 ## 字段填写规则
 1. scope_type：教育部目录竞赛/全国性行业竞赛→校外竞赛；学校主办→校内竞赛/校内活动
+2. **时间逻辑（重要）**：event_time（比赛/活动时间）必须 >= signup_deadline（报名截止时间），即先报名、后参赛。如果原文无法确定 event_time，填 null 不要编造。
 2. category：根据竞赛内容归类到最合适的细分类型
 3. summary：50-100字，包含竞赛核心内容和参赛价值
 4. target_major：根据竞赛领域推断适合的专业，用逗号分隔
