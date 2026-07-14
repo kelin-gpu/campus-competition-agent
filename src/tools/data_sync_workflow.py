@@ -118,7 +118,7 @@ def load_saikr_data() -> list:
     try:
         from tools.saikr_crawler import crawl_saikr_hot_contests
         logger.info("Crawling saikr hot contests online...")
-        result = crawl_saikr_hot_contests(limit=50, sleep_seconds=0.6)
+        result = crawl_saikr_hot_contests(limit=30, sleep_seconds=0.8, fetch_details=True)
         records = result.get("records", [])
         if not records:
             logger.warning(f"Saikr crawler returned {len(records)} records (empty)")
@@ -155,6 +155,44 @@ def load_ministry_data() -> list:
         })
     logger.info(f"Loaded {len(events)} events from ministry catalog")
     return events
+
+
+def _refresh_all_statuses(supabase) -> int:
+    """
+    刷新所有记录的 status 字段，根据 signup_deadline 重新计算。
+    解决数据中过期但状态未更新的问题。
+
+    Returns:
+        被更新的记录数
+    """
+    from datetime import timezone as tz
+
+    response = supabase.table("event_info").select("event_id,title,signup_deadline,status").execute()
+    all_records = response.data if hasattr(response, 'data') and isinstance(response.data, list) else []
+
+    updated_count = 0
+    now = datetime.now(tz.utc)
+
+    for record in all_records:
+        event_id = record.get("event_id")
+        current_status = record.get("status")
+        deadline_str = record.get("signup_deadline")
+
+        new_status = _determine_status(deadline_str)
+
+        if new_status != current_status:
+            try:
+                supabase.table("event_info").update({
+                    "status": new_status,
+                    "update_time": now.isoformat(),
+                }).eq("event_id", event_id).execute()
+                updated_count += 1
+                logger.info(f"Status refreshed: {record.get('title', '')[:40]} [{current_status}] -> [{new_status}]")
+            except Exception as e:
+                logger.error(f"Failed to refresh status for {event_id}: {e}")
+
+    logger.info(f"Status refresh complete: {updated_count}/{len(all_records)} records updated")
+    return updated_count
 
 
 def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
@@ -232,6 +270,14 @@ def run_full_sync(ctx=None) -> dict:
         ctx = request_context.get() or new_context(method="full_sync")
 
     logger.info("=== Starting full data sync ===")
+
+    # 0. 先刷新所有记录的过期状态
+    supabase = _get_supabase()
+    try:
+        refreshed = _refresh_all_statuses(supabase)
+        logger.info(f"Pre-sync status refresh: {refreshed} records updated")
+    except Exception as e:
+        logger.warning(f"Status refresh failed (non-fatal): {e}")
 
     # 1. 加载数据
     saikr_data = load_saikr_data()

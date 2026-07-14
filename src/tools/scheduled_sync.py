@@ -47,20 +47,35 @@ def _scheduled_wechat_sync_job():
         logger.error(f"Scheduled WeChat sync failed: {e}", exc_info=True)
 
 
-def start_scheduler():
-    """启动定时调度器（幂等：多次调用只启动一次）"""
+def start_scheduler(force_restart: bool = False):
+    """启动定时调度器（幂等：多次调用只启动一次）
+
+    Args:
+        force_restart: 如果为True，先停止现有调度器再重新启动
+    """
     global _scheduler
     with _scheduler_lock:
         if _scheduler is not None and _scheduler.running:
-            logger.info("Scheduler already running")
-            return _scheduler
+            if not force_restart:
+                logger.info("Scheduler already running")
+                return _scheduler
+            else:
+                logger.info("Force restarting scheduler...")
+                _scheduler.shutdown(wait=False)
+                _scheduler = None
 
-        _scheduler = BackgroundScheduler()
+        _scheduler = BackgroundScheduler(
+            timezone="Asia/Shanghai",
+            job_defaults={
+                "coalesce": True,       # 合并错过的执行
+                "max_instances": 1,     # 每个job最多1个实例
+            }
+        )
 
         # 每天凌晨2点执行全量同步（教育部+赛氪+微信公众号）
         _scheduler.add_job(
             _scheduled_sync_job,
-            trigger=CronTrigger(hour=2, minute=0),
+            trigger=CronTrigger(hour=2, minute=0, timezone="Asia/Shanghai"),
             id="daily_full_sync",
             name="每日数据全量同步",
             replace_existing=True,
@@ -70,7 +85,7 @@ def start_scheduler():
         # 每6小时执行微信公众号增量同步
         _scheduler.add_job(
             _scheduled_wechat_sync_job,
-            trigger=IntervalTrigger(hours=6),
+            trigger=IntervalTrigger(hours=6, timezone="Asia/Shanghai"),
             id="wechat_incremental_sync",
             name="微信公众号增量同步（每6小时）",
             replace_existing=True,
@@ -78,7 +93,11 @@ def start_scheduler():
         )
 
         _scheduler.start()
-        logger.info("Scheduler started. Jobs: daily_full_sync@02:00, wechat_sync@every 6h")
+        logger.info("Scheduler started successfully. Jobs: daily_full_sync@02:00, wechat_sync@every 6h")
+
+        # 验证启动
+        status = get_scheduler_status()
+        logger.info(f"Scheduler verification: running={status['running']}, jobs={len(status['jobs'])}")
         return _scheduler
 
 

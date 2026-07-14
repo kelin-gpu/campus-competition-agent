@@ -337,31 +337,79 @@ def get_personalized_recommendations(user_id: str = "default_user", limit: int =
 
 
 def _build_reasons(event: dict, profile: dict, score: float) -> list:
-    """构建推荐理由列表"""
+    """构建推荐理由列表，综合专业匹配、年级匹配、政策标签、DDL紧迫度等"""
     reasons = []
     major = profile.get("major", "")
     grade = profile.get("grade", "")
     event_major = event.get("target_major", "")
     event_grade = event.get("target_grade", "")
+    policy_tags = _parse_json_field(event.get("policy_tags"))
+    category = event.get("category", "")
+    tags = _parse_json_field(event.get("tags"))
+    organizer = event.get("organizer", "")
 
-    if major and event_major and major in event_major:
-        reasons.append(f"专业匹配（{major}）")
-    if grade and event_grade and grade in event_grade:
-        reasons.append(f"年级匹配（{grade}）")
+    # 1. 专业匹配
+    if major and event_major:
+        if major in event_major:
+            reasons.append(f"专业核心竞赛（{major}）")
+        elif any(m in event_major for m in major.split(",")):
+            reasons.append(f"专业相关（{major}）")
+
+    # 2. 年级匹配
+    if grade and event_grade:
+        if grade in event_grade:
+            reasons.append(f"适合当前年级（{grade}）")
+        else:
+            reasons.append("可跨年级参与")
+
+    # 3. 政策标签分析
+    if "保研明确相关" in policy_tags:
+        reasons.append("保研加分项")
+    if "综测加分" in policy_tags:
+        reasons.append("综测加分项")
+    if "奖学金评定" in policy_tags:
+        reasons.append("奖学金评定相关")
+    if "五育" in str(policy_tags):
+        reasons.append("五育认定")
+
+    # 4. 教育部认证
     if event.get("is_ministry_approved"):
-        reasons.append("教育部目录竞赛")
+        reasons.append("教育部官方认证竞赛")
+
+    # 5. 竞赛级别
     level = event.get("contest_level", "")
-    if level in ("国际级", "国家级"):
-        reasons.append(f"{level}高含金量")
+    level_reasons = {"国际级": "国际级高含金量赛事", "国家级": "国家级权威竞赛", "省级": "省级竞赛"}
+    if level in level_reasons:
+        reasons.append(level_reasons[level])
+
+    # 6. DDL紧迫度
     days = event.get("days_remaining")
     if days is not None:
         try:
             d = int(days)
-            if 0 <= d <= 7:
-                reasons.append(f"即将截止（{d}天）")
-            elif d <= 30:
+            if 0 <= d <= 3:
+                reasons.append(f"⏰ 即将截止（仅剩{d}天）")
+            elif 4 <= d <= 7:
+                reasons.append(f"本周截止（{d}天）")
+            elif 8 <= d <= 30:
                 reasons.append(f"本月截止（{d}天）")
+            else:
+                reasons.append(f"充裕准备时间（{d}天）")
         except (ValueError, TypeError):
             pass
+    else:
+        reasons.append("报名时间待确认，建议主动查询")
+
+    # 7. 分类标签
+    if "数学建模" in str(tags) or "数学建模" in category:
+        reasons.append("经典数学建模赛事")
+    if "创新创业" in str(tags) or "创新创业" in category:
+        reasons.append("创新创业类竞赛")
+    if "程序设计" in str(tags) or "ACM" in str(tags) or "ICPC" in str(tags):
+        reasons.append("程序设计竞赛")
+
+    # 8. 权威主办方
+    if "教育部" in organizer or "中国数学会" in organizer or "中国计算机学会" in organizer:
+        reasons.append(f"权威主办方（{organizer[:15]}）")
 
     return reasons

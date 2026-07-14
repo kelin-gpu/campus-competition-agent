@@ -164,20 +164,19 @@ def sync_all_events_to_kb(ctx=None) -> dict:
     return stats
 
 
-def search_knowledge_base(query: str, top_k: int = 5, ctx=None) -> list:
+@tool
+def search_knowledge_base(query: str, top_k: int = 5) -> str:
     """
-    知识库语义搜索
+    知识库语义搜索。在竞赛知识库中搜索相关内容，可用于查找竞赛详情、规则、政策等。
 
     Args:
         query: 搜索文本
-        top_k: 返回结果数量
-        ctx: 请求上下文
+        top_k: 返回结果数量，默认5
 
     Returns:
-        搜索结果列表 [{"content": str, "score": float, "doc_id": str}, ...]
+        JSON格式的搜索结果
     """
-    if ctx is None:
-        ctx = request_context.get() or new_context(method="search_kb")
+    ctx = request_context.get() or new_context(method="search_kb")
 
     try:
         client = _get_kb_client(ctx)
@@ -199,10 +198,13 @@ def search_knowledge_base(query: str, top_k: int = 5, ctx=None) -> list:
         else:
             msg = getattr(response, 'msg', 'unknown error')
             logger.error(f"KB search failed: {msg}")
+            return json.dumps({"error": f"知识库搜索失败: {msg}"}, ensure_ascii=False)
 
         logger.info(f"KB search for '{query[:30]}': found {len(results)} results")
-        return results
+        if not results:
+            return json.dumps({"message": "知识库中未找到相关内容"}, ensure_ascii=False)
+        return json.dumps(results, ensure_ascii=False, indent=2)
 
     except Exception as e:
         logger.error(f"KB search exception: {e}")
-        return []
+        return json.dumps({"error": f"知识库搜索异常: {str(e)}"}, ensure_ascii=False)
