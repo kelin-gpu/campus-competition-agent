@@ -28,6 +28,7 @@ from tools.sync_tools import (
     cleanup_expired_events,
 )
 from tools.knowledge_base import search_knowledge_base
+from tools.cross_verify_enrich import cross_verify_and_enrich
 from tools.user_profile import (
     get_user_profile,
     update_user_profile,
@@ -107,6 +108,8 @@ def build_agent(ctx=None):
         cleanup_expired_events,
         # 知识库 RAG
         search_knowledge_base,
+        # 三方交叉验证数据补充
+        cross_verify_and_enrich,
         # 用户画像与个性化推荐
         get_user_profile,
         update_user_profile,

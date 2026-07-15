@@ -264,6 +264,15 @@ def enrich_single_event(raw_event: dict, ctx=None, llm_timeout: int = 30) -> dic
     enriched.setdefault("update_time", datetime.now().isoformat())
     enriched.setdefault("original_text", raw_event.get("detail_text", ""))
 
+    # 5. 若 LLM 补全后关键时间字段仍缺失，标记需要交叉验证
+    critical_missing = []
+    if not enriched.get("signup_deadline") or str(enriched.get("signup_deadline", "")).strip() == "":
+        critical_missing.append("signup_deadline")
+    if not enriched.get("event_time") or str(enriched.get("event_time", "")).strip() == "":
+        critical_missing.append("event_time")
+    if critical_missing:
+        enriched["_needs_cross_verify"] = critical_missing
+
     return enriched
 
 

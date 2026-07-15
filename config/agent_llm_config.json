@@ -23,6 +23,7 @@
         "list_wechat_sources",
         "refresh_wechat_accounts",
         "cleanup_expired_events",
+        "cross_verify_and_enrich",
         "search_knowledge_base",
         "get_user_profile",
         "update_user_profile",
