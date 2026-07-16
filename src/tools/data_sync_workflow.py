@@ -27,6 +27,7 @@ from tools.event_enrichment import (
     _load_ministry_contests,
     ASSETS_DIR,
 )
+from tools.event_schema import event_db_payload, merge_event_data
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ def _find_existing_event(supabase, title: str, threshold: float = 0.85) -> Optio
     norm_title = _normalize_title(title)
 
     # 先查所有事件标题（限制数量避免性能问题）
-    response = supabase.table("event_info").select("event_id,title").execute()
+    response = supabase.table("event_info").select("*").execute()
     existing = response.data if hasattr(response, 'data') and isinstance(response.data, list) else []
 
     for item in existing:
@@ -71,24 +72,7 @@ def _merge_event_data(existing: dict, new_data: dict) -> dict:
     合并事件数据：保留权威度高的为主记录
     规则：教育部目录 > 高可信度 > 中可信度 > 低可信度
     """
-    merged = {**existing}
-
-    # 如果新数据有教育部认证，以新数据为主
-    if new_data.get("is_ministry_approved"):
-        for key, value in new_data.items():
-            if value is not None and value != "" and value != "null":
-                merged[key] = value
-    else:
-        # 只更新空字段
-        for key, value in new_data.items():
-            if key in ("event_id",):
-                continue
-            existing_val = merged.get(key)
-            if (existing_val is None or existing_val == "" or existing_val == "null") and value is not None:
-                merged[key] = value
-
-    merged["update_time"] = datetime.now().isoformat()
-    return merged
+    return merge_event_data(existing, new_data)
 
 
 def _determine_status(signup_deadline: Optional[str]) -> str:
@@ -309,7 +293,8 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
                 event_id = existing["event_id"]
                 merged["event_id"] = event_id
 
-                update_data = {k: v for k, v in merged.items() if k != "event_id"}
+                update_data = event_db_payload(merged)
+                update_data.pop("event_id", None)
                 supabase.table("event_info").update(update_data).eq("event_id", event_id).execute()
                 stats["updated"] += 1
                 stats["details"].append({"action": "updated", "event_id": event_id, "title": title[:50]})
@@ -326,7 +311,7 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
                     if isinstance(val, list):
                         event[field] = json.dumps(val, ensure_ascii=False)
 
-                insert_data = {k: v for k, v in event.items() if v is not None and k != "_ministry_info"}
+                insert_data = event_db_payload(event)
                 supabase.table("event_info").insert(insert_data).execute()
                 stats["added"] += 1
                 stats["details"].append({"action": "added", "event_id": event_id, "title": title[:50]})
