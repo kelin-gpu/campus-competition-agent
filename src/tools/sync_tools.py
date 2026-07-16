@@ -235,14 +235,13 @@ def refresh_wechat_accounts() -> str:
 
 @tool
 def cleanup_expired_events() -> str:
-    """清理数据库中报名截止时间已过的过期竞赛/活动记录。
-    这些记录不会再展示给学生，直接删除以保持数据库清洁。"""
+    """将报名截止时间已过的竞赛/活动记录标记为“已截止”，保留历史数据。"""
     ctx = request_context.get() or new_context(method="cleanup_expired")
     try:
         from tools.data_sync_workflow import _cleanup_expired, _get_supabase
         supabase = _get_supabase()
-        deleted = _cleanup_expired(supabase)
-        return f"过期记录清理完成！共删除 {deleted} 条已截止的竞赛/活动记录。"
+        updated = _cleanup_expired(supabase)
+        return f"过期状态刷新完成！共标记 {updated} 条已截止的竞赛/活动记录。"
     except Exception as e:
         logger.error(f"Cleanup failed: {e}", exc_info=True)
         return f"清理过期记录失败：{str(e)}"

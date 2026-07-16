@@ -27,7 +27,12 @@ from tools.event_enrichment import (
     _load_ministry_contests,
     ASSETS_DIR,
 )
-from tools.event_schema import event_db_payload, merge_event_data
+from tools.event_schema import (
+    event_db_payload,
+    merge_event_data,
+    normalize_event_times,
+    parse_event_datetime,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,31 +84,28 @@ def _determine_status(signup_deadline: Optional[str]) -> str:
     """根据报名截止时间确定状态"""
     if not signup_deadline:
         return "报名中"
-    try:
-        from datetime import timezone
-        deadline = datetime.fromisoformat(signup_deadline.replace("+08:00", "+08:00"))
-        now = datetime.now(timezone.utc)
-        diff = (deadline - now).days
-        if diff < 0:
-            return "已截止"
-        elif diff <= 7:
-            return "即将截止"
-        else:
-            return "报名中"
-    except Exception:
+    deadline = parse_event_datetime(signup_deadline)
+    if deadline is None:
         return "报名中"
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    diff = (deadline - now).days
+    if deadline < now:
+        return "已截止"
+    if diff <= 7:
+        return "即将截止"
+    return "报名中"
 
 
 def _is_expired(signup_deadline: Optional[str]) -> bool:
     """判断报名截止时间是否已过期。无 deadline 的视为未过期（保留）。"""
     if not signup_deadline:
         return False
-    try:
-        from datetime import timezone
-        deadline = datetime.fromisoformat(signup_deadline.replace("+08:00", "+08:00"))
-        return deadline < datetime.now(timezone.utc)
-    except Exception:
+    deadline = parse_event_datetime(signup_deadline)
+    if deadline is None:
         return False
+    from datetime import timezone
+    return deadline < datetime.now(timezone.utc)
 
 
 def _validate_timeline(event: dict) -> dict:
@@ -113,23 +115,13 @@ def _validate_timeline(event: dict) -> dict:
     如果矛盾（event_time < signup_deadline），清空 event_time，因为无法判断哪个字段正确。
     返回修正后的 event dict。
     """
-    deadline = event.get("signup_deadline")
-    event_time = event.get("event_time")
-    if not deadline or not event_time:
-        return event
-    try:
-        from datetime import timezone
-        dl = datetime.fromisoformat(deadline.replace("+08:00", "+08:00"))
-        et = datetime.fromisoformat(event_time.replace("+08:00", "+08:00"))
-        if et < dl:
-            logger.warning(
-                f"Timeline conflict: event_time({event_time}) < signup_deadline({deadline}) "
-                f"for '{event.get('title', '')[:40]}' — clearing event_time"
-            )
-            event["event_time"] = None
-    except Exception:
-        pass
-    return event
+    normalized = normalize_event_times(event)
+    if event.get("event_time") and normalized.get("event_time") is None:
+        logger.warning(
+            "Invalid event_time for '%s'; clearing the value",
+            event.get("title", "")[:40],
+        )
+    return normalized
 
 
 def load_saikr_data() -> list:
@@ -181,17 +173,17 @@ def load_ministry_data() -> list:
 
 def _cleanup_expired(supabase) -> int:
     """
-    删除数据库中报名截止时间已过的过期记录。
+    将数据库中报名截止时间已过的记录标记为“已截止”。
 
     Returns:
-        被删除的记录数
+        被更新的记录数
     """
     from datetime import timezone as tz
 
     response = supabase.table("event_info").select("event_id,title,signup_deadline,status").execute()
     all_records = response.data if hasattr(response, 'data') and isinstance(response.data, list) else []
 
-    deleted_count = 0
+    updated_count = 0
     now = datetime.now(tz.utc)
 
     for record in all_records:
@@ -199,14 +191,18 @@ def _cleanup_expired(supabase) -> int:
         deadline_str = record.get("signup_deadline")
         if _is_expired(deadline_str):
             try:
-                supabase.table("event_info").delete().eq("event_id", event_id).execute()
-                deleted_count += 1
-                logger.info(f"Deleted expired: {record.get('title', '')[:50]} (deadline={deadline_str})")
+                if record.get("status") != "已截止":
+                    supabase.table("event_info").update({
+                        "status": "已截止",
+                        "update_time": now.isoformat(),
+                    }).eq("event_id", event_id).execute()
+                    updated_count += 1
+                logger.info(f"Marked expired: {record.get('title', '')[:50]} (deadline={deadline_str})")
             except Exception as e:
-                logger.error(f"Failed to delete expired event {event_id}: {e}")
+                logger.error(f"Failed to mark expired event {event_id}: {e}")
 
-    logger.info(f"Expired cleanup complete: {deleted_count}/{len(all_records)} records deleted")
-    return deleted_count
+    logger.info(f"Expired status refresh complete: {updated_count}/{len(all_records)} records updated")
+    return updated_count
 
 
 def _refresh_all_statuses(supabase) -> int:
@@ -262,16 +258,10 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
 
     for event in enriched_events:
         try:
+            event = normalize_event_times(event)
             title = event.get("title", "")
             if not title:
                 stats["skipped"] += 1
-                continue
-
-            # 入库前过滤：报名截止时间已过的直接丢弃
-            if _is_expired(event.get("signup_deadline")):
-                logger.info(f"Skipping expired event: {title[:50]} (deadline={event.get('signup_deadline')})")
-                stats["skipped"] += 1
-                stats["details"].append({"action": "skipped_expired", "title": title[:50]})
                 continue
 
             # 入库前校验：event_time 不能早于 signup_deadline
@@ -283,12 +273,6 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
             if existing:
                 # 已存在 -> 合并更新
                 merged = _merge_event_data(existing, event)
-                # 合并后再次检查是否过期（新 deadline 可能使旧记录过期）
-                if _is_expired(merged.get("signup_deadline")):
-                    logger.info(f"Skipping update for expired event: {title[:50]}")
-                    stats["skipped"] += 1
-                    stats["details"].append({"action": "skipped_expired", "title": title[:50]})
-                    continue
                 merged["status"] = _determine_status(merged.get("signup_deadline"))
                 event_id = existing["event_id"]
                 merged["event_id"] = event_id
@@ -340,13 +324,8 @@ def run_full_sync(ctx=None) -> dict:
 
     logger.info("=== Starting full data sync ===")
 
-    # 0. 清理过期记录 + 刷新状态
+    # 0. 刷新状态；历史记录保留，不做硬删除
     supabase = _get_supabase()
-    try:
-        deleted = _cleanup_expired(supabase)
-        logger.info(f"Pre-sync expired cleanup: {deleted} records deleted")
-    except Exception as e:
-        logger.warning(f"Expired cleanup failed (non-fatal): {e}")
     try:
         refreshed = _refresh_all_statuses(supabase)
         logger.info(f"Pre-sync status refresh: {refreshed} records updated")

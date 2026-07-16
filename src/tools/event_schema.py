@@ -60,6 +60,36 @@ def event_db_payload(event: Mapping[str, Any], *, include_none: bool = False) ->
     }
 
 
+def parse_event_datetime(value: Any) -> datetime | None:
+    """Parse an event timestamp and reject invalid or timezone-naive values."""
+    if value is None or value == "":
+        return None
+    try:
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(
+            str(value).strip().replace("Z", "+00:00")
+        )
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed
+
+
+def normalize_event_times(event: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize event timestamps and clear impossible timeline values."""
+    normalized = dict(event)
+    deadline = parse_event_datetime(event.get("signup_deadline"))
+    event_time = parse_event_datetime(event.get("event_time"))
+
+    if "signup_deadline" in event:
+        normalized["signup_deadline"] = deadline.isoformat() if deadline else None
+    if "event_time" in event:
+        normalized["event_time"] = event_time.isoformat() if event_time else None
+    if deadline and event_time and event_time < deadline:
+        normalized["event_time"] = None
+    return normalized
+
+
 def _source_priority(event: Mapping[str, Any]) -> tuple[int, int]:
     return (
         1 if event.get("is_ministry_approved") is True else 0,

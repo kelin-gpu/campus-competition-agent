@@ -130,7 +130,7 @@ def _build_enrichment_prompt(raw_event: dict, ministry_match: Optional[dict] = N
 {detail_text}
 {ministry_hint}
 ## 提取要求
-请严格按以下JSON格式输出，每个字段都必须填写（无法确定的用合理默认值）：
+请严格按以下JSON格式输出。无法从原文或权威目录确认的事实必须使用 null，禁止猜测或估算：
 
 ```json
 {{
@@ -138,8 +138,8 @@ def _build_enrichment_prompt(raw_event: dict, ministry_match: Optional[dict] = N
   "scope_type": "校外竞赛 或 校内竞赛 或 校内活动",
   "category": "细分类型，如：程序设计竞赛/数学建模/创新创业/五育活动/学术讲座/电子信息/机械工程 等",
   "summary": "50-100字简介，简明扼要说明竞赛内容、参赛形式、获奖价值",
-  "signup_deadline": "YYYY-MM-DDTHH:MM:SS+08:00 格式，如无法确定具体日期则用合理估计",
-  "event_time": "YYYY-MM-DDTHH:MM:SS+08:00 格式，比赛/活动时间",
+  "signup_deadline": "YYYY-MM-DDTHH:MM:SS+08:00 格式；无法确认时为 null",
+  "event_time": "YYYY-MM-DDTHH:MM:SS+08:00 格式；无法确认时为 null",
   "target_major": "逗号分隔的适合专业列表，如：计算机科学与技术,软件工程,人工智能",
   "target_grade": "逗号分隔的适合年级，如：大一,大二,大三",
   "contest_level": "国际级 或 国家级 或 省级 或 校级 或 院级",
@@ -155,7 +155,7 @@ def _build_enrichment_prompt(raw_event: dict, ministry_match: Optional[dict] = N
 
 ## 字段填写规则
 1. scope_type：教育部目录竞赛/全国性行业竞赛→校外竞赛；学校主办→校内竞赛/校内活动
-2. **时间逻辑（重要）**：event_time（比赛/活动时间）必须 >= signup_deadline（报名截止时间），即先报名、后参赛。如果原文无法确定 event_time，填 null 不要编造。
+2. **时间逻辑（重要）**：event_time（比赛/活动时间）必须 >= signup_deadline（报名截止时间），即先报名、后参赛。任何无法从原文确认的日期都填 null，不得推测年份或日期。
 2. category：根据竞赛内容归类到最合适的细分类型
 3. summary：50-100字，包含竞赛核心内容和参赛价值
 4. target_major：根据竞赛领域推断适合的专业，用逗号分隔

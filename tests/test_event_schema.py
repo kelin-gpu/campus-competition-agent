@@ -1,4 +1,10 @@
-from tools.event_schema import EVENT_DB_FIELDS, event_db_payload, merge_event_data
+from tools.event_schema import (
+    EVENT_DB_FIELDS,
+    event_db_payload,
+    merge_event_data,
+    normalize_event_times,
+    parse_event_datetime,
+)
 
 
 def test_payload_filters_internal_and_unknown_fields():
@@ -63,3 +69,22 @@ def test_ministry_source_can_replace_populated_lower_priority_fields():
     assert merged["title"] == "教育部目录标题"
     assert merged["is_ministry_approved"] is True
     assert "extra" not in merged
+
+
+def test_event_datetime_requires_valid_timezone_aware_iso_value():
+    assert parse_event_datetime("2026-08-01T10:00:00+08:00") is not None
+    assert parse_event_datetime("2026-08-01T10:00:00") is None
+    assert parse_event_datetime("2026-02-31T10:00:00+08:00") is None
+    assert parse_event_datetime("not-a-date") is None
+
+
+def test_impossible_event_timeline_clears_event_time():
+    event = normalize_event_times(
+        {
+            "signup_deadline": "2026-08-10T23:59:59+08:00",
+            "event_time": "2026-08-01T08:00:00+08:00",
+        }
+    )
+
+    assert event["signup_deadline"] == "2026-08-10T23:59:59+08:00"
+    assert event["event_time"] is None

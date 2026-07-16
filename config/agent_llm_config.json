@@ -12,7 +12,7 @@
         "query_events",
         "query_event_detail",
         "get_deadline_reminders",
-        "parse_and_save_notification",
+        "parse_notification",
         "web_search_events",
         "trigger_full_sync",
         "trigger_incremental_sync",
