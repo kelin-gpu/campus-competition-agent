@@ -8,16 +8,14 @@ AI字段补全工作流（Skill）
 import json
 import os
 import re
-import signal
 import logging
-import signal
 from datetime import datetime
 from typing import Optional
 
-from coze_coding_dev_sdk import LLMClient
 from coze_coding_utils.log.write_log import request_context
-from coze_coding_utils.runtime_ctx.context import new_context
+from coze_coding_utils.runtime_ctx.context import default_headers, new_context
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +24,20 @@ _ministry_contests_cache = None
 
 # 数据文件路径
 ASSETS_DIR = os.path.join(os.getenv("COZE_WORKSPACE_PATH", "/workspace/projects"), "assets", "data")
+
+
+def _build_enrichment_llm(ctx, timeout: int) -> ChatOpenAI:
+    """Create a Coze-compatible client with an HTTP timeout safe in any thread."""
+    return ChatOpenAI(
+        model="doubao-seed-2-0-lite-260215",
+        api_key=os.getenv("COZE_WORKLOAD_IDENTITY_API_KEY"),
+        base_url=os.getenv("COZE_INTEGRATION_MODEL_BASE_URL"),
+        temperature=0.2,
+        max_completion_tokens=2000,
+        timeout=timeout,
+        default_headers=default_headers(ctx),
+        extra_body={"thinking": {"type": "disabled"}},
+    )
 
 
 def _load_ministry_contests() -> list:
@@ -130,7 +142,7 @@ def _build_enrichment_prompt(raw_event: dict, ministry_match: Optional[dict] = N
 {detail_text}
 {ministry_hint}
 ## 提取要求
-请严格按以下JSON格式输出，每个字段都必须填写（无法确定的用合理默认值）：
+请严格按以下JSON格式输出。无法从原文或权威目录确认的事实必须使用 null，禁止猜测或估算：
 
 ```json
 {{
@@ -138,8 +150,8 @@ def _build_enrichment_prompt(raw_event: dict, ministry_match: Optional[dict] = N
   "scope_type": "校外竞赛 或 校内竞赛 或 校内活动",
   "category": "细分类型，如：程序设计竞赛/数学建模/创新创业/五育活动/学术讲座/电子信息/机械工程 等",
   "summary": "50-100字简介，简明扼要说明竞赛内容、参赛形式、获奖价值",
-  "signup_deadline": "YYYY-MM-DDTHH:MM:SS+08:00 格式，如无法确定具体日期则用合理估计",
-  "event_time": "YYYY-MM-DDTHH:MM:SS+08:00 格式，比赛/活动时间",
+  "signup_deadline": "YYYY-MM-DDTHH:MM:SS+08:00 格式；无法确认时为 null",
+  "event_time": "YYYY-MM-DDTHH:MM:SS+08:00 格式；无法确认时为 null",
   "target_major": "逗号分隔的适合专业列表，如：计算机科学与技术,软件工程,人工智能",
   "target_grade": "逗号分隔的适合年级，如：大一,大二,大三",
   "contest_level": "国际级 或 国家级 或 省级 或 校级 或 院级",
@@ -155,7 +167,7 @@ def _build_enrichment_prompt(raw_event: dict, ministry_match: Optional[dict] = N
 
 ## 字段填写规则
 1. scope_type：教育部目录竞赛/全国性行业竞赛→校外竞赛；学校主办→校内竞赛/校内活动
-2. **时间逻辑（重要）**：event_time（比赛/活动时间）必须 >= signup_deadline（报名截止时间），即先报名、后参赛。如果原文无法确定 event_time，填 null 不要编造。
+2. **时间逻辑（重要）**：event_time（比赛/活动时间）必须 >= signup_deadline（报名截止时间），即先报名、后参赛。任何无法从原文确认的日期都填 null，不得推测年份或日期。
 2. category：根据竞赛内容归类到最合适的细分类型
 3. summary：50-100字，包含竞赛核心内容和参赛价值
 4. target_major：根据竞赛领域推断适合的专业，用逗号分隔
@@ -196,32 +208,14 @@ def enrich_single_event(raw_event: dict, ctx=None, llm_timeout: int = 30) -> dic
     # 2. 构建提示词并调用LLM
     prompt = _build_enrichment_prompt(raw_event, ministry_match)
 
-    client = LLMClient(ctx=ctx)
     messages = [
         SystemMessage(content="你是一个竞赛信息结构化提取专家，只输出JSON，不输出其他内容。"),
         HumanMessage(content=prompt)
     ]
 
-    # 设置超时保护
-    import signal
-
-    class LLMTimeoutError(Exception):
-        pass
-
-    def _timeout_handler(signum, frame):
-        raise LLMTimeoutError(f"LLM call timed out after {llm_timeout}s")
-
-    old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(llm_timeout)
-
     try:
-        response = client.invoke(
-            messages=messages,
-            model="doubao-seed-2-0-lite-260215",
-            temperature=0.2,
-            max_completion_tokens=2000
-        )
-        signal.alarm(0)  # 取消超时
+        client = _build_enrichment_llm(ctx, timeout=llm_timeout)
+        response = client.invoke(messages)
         content = response.content
         if isinstance(content, list):
             content = " ".join(
@@ -240,17 +234,10 @@ def enrich_single_event(raw_event: dict, ctx=None, llm_timeout: int = 30) -> dic
                 content_str = content_str[:-3].strip()
 
         enriched = json.loads(content_str)
-    except LLMTimeoutError as e:
-        logger.warning(f"LLM enrichment timed out for '{title}': {e}")
-        enriched = _rule_based_fallback(raw_event, ministry_match)
     except Exception as e:
-        signal.alarm(0)  # 确保取消超时
         logger.error(f"LLM enrichment failed for '{title}': {e}")
         # Fallback: 使用规则提取基本信息
         enriched = _rule_based_fallback(raw_event, ministry_match)
-    finally:
-        signal.signal(signal.SIGALRM, old_handler)  # 恢复原始handler
-        signal.alarm(0)  # 确保取消
 
     # 3. 确保教育部匹配信息被正确标记
     if ministry_match:
@@ -319,14 +306,6 @@ def _rule_based_fallback(raw_event: dict, ministry_match: Optional[dict] = None)
     return result
 
 
-class _EnrichTimeout(Exception):
-    pass
-
-
-def _timeout_handler(signum, frame):
-    raise _EnrichTimeout("LLM调用超时")
-
-
 def enrich_batch(raw_events: list, ctx=None, per_record_timeout: int = 30, total_timeout: int = 600) -> list:
     """
     批量AI字段补全（带超时保护）
@@ -364,16 +343,11 @@ def enrich_batch(raw_events: list, ctx=None, per_record_timeout: int = 30, total
         logger.info(f"Enriching event {i+1}/{total}: {event.get('title', 'unknown')[:30]}...")
 
         try:
-            # 设置单条超时（仅Unix系统支持SIGALRM）
-            if hasattr(signal, 'SIGALRM'):
-                old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-                signal.alarm(per_record_timeout)
-
-            enriched = enrich_single_event(event, ctx=ctx)
-
-            if hasattr(signal, 'SIGALRM'):
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+            enriched = enrich_single_event(
+                event,
+                ctx=ctx,
+                llm_timeout=per_record_timeout,
+            )
 
             # 检查LLM是否真的返回了有效数据
             if not enriched.get("summary") and not enriched.get("category"):
@@ -385,19 +359,10 @@ def enrich_batch(raw_events: list, ctx=None, per_record_timeout: int = 30, total
                 results.append(enriched)
                 llm_success += 1
 
-        except _EnrichTimeout:
-            logger.warning(f"LLM超时({per_record_timeout}s)，降级: {event.get('title', 'unknown')[:40]}")
-            fallback = _rule_based_fallback(event, match_ministry_contest(event.get("title", "")))
-            results.append(fallback)
-            llm_failed += 1
         except Exception as e:
             logger.error(f"Failed to enrich event {i+1}: {e}")
             fallback = _rule_based_fallback(event, match_ministry_contest(event.get("title", "")))
             results.append(fallback)
             llm_failed += 1
-        finally:
-            if hasattr(signal, 'SIGALRM'):
-                signal.alarm(0)
-
     logger.info(f"Enrichment complete: LLM成功={llm_success}, 降级={llm_failed}, 总耗时={time.time()-start_time:.1f}s")
     return results
