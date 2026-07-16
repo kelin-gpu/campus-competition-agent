@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 from langchain.tools import tool
 from coze_coding_utils.log.write_log import request_context
+from tools.event_schema import calculate_days_remaining, is_deadline_expired
 from tools.user_identity import require_context_user_id
 
 logger = logging.getLogger(__name__)
@@ -292,9 +293,15 @@ def get_personalized_recommendations(limit: int = 10) -> str:
         if not events:
             return "当前没有正在报名的竞赛/活动。"
 
-        # 计算每个事件的得分
+        # 从 signup_deadline 实时计算 DDL；days_remaining 不是数据库字段。
         scored_events = []
         for event in events:
+            if is_deadline_expired(event.get("signup_deadline")):
+                continue
+            event = dict(event)
+            event["days_remaining"] = calculate_days_remaining(
+                event.get("signup_deadline")
+            )
             score = _calculate_relevance_score(event, profile)
             scored_events.append((score, event))
 
@@ -328,7 +335,7 @@ def get_personalized_recommendations(limit: int = 10) -> str:
                 "grade": profile.get("grade", "未设置"),
                 "interest_tags": _parse_json_field(profile.get("interest_tags")),
             },
-            "total_candidates": len(events),
+            "total_candidates": len(scored_events),
             "recommendations": results,
         }
         return json.dumps(output, ensure_ascii=False, indent=2)

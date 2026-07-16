@@ -75,6 +75,31 @@ def parse_event_datetime(value: Any) -> datetime | None:
     return parsed
 
 
+def calculate_days_remaining(value: Any, *, now: datetime | None = None) -> int | None:
+    """Return calendar days until a deadline using the deadline's timezone.
+
+    A deadline that has already passed is always ``-1`` (including one that
+    passed earlier today), an upcoming deadline today is ``0``, and an unknown
+    or invalid deadline is ``None``.
+    """
+    deadline = parse_event_datetime(value)
+    if deadline is None:
+        return None
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    current = current.astimezone(deadline.tzinfo)
+    if deadline < current:
+        return -1
+    return (deadline.date() - current.date()).days
+
+
+def is_deadline_expired(value: Any, *, now: datetime | None = None) -> bool:
+    """Return true only when a valid deadline is earlier than ``now``."""
+    return calculate_days_remaining(value, now=now) == -1
+
+
 def normalize_event_times(event: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize event timestamps and clear impossible timeline values."""
     normalized = dict(event)
