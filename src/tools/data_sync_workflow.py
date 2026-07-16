@@ -17,6 +17,7 @@ from typing import Optional
 
 from coze_coding_utils.log.write_log import request_context
 from coze_coding_utils.runtime_ctx.context import new_context
+from sqlalchemy.orm import Session
 
 from tools.event_enrichment import (
     enrich_single_event,
@@ -92,9 +93,12 @@ def _merge_event_data(existing: dict, new_data: dict) -> dict:
 
 
 def _determine_status(signup_deadline: Optional[str]) -> str:
-    """根据报名截止时间确定状态"""
+    """
+    根据报名截止时间确定状态。
+    无有效 DDL 时返回'暂无本届信息'，避免把目录/旧信息误标为可报名。
+    """
     if not signup_deadline:
-        return "报名中"
+        return "暂无本届信息"
     try:
         from datetime import timezone
         deadline = datetime.fromisoformat(signup_deadline.replace("+08:00", "+08:00"))
@@ -107,7 +111,7 @@ def _determine_status(signup_deadline: Optional[str]) -> str:
         else:
             return "报名中"
     except Exception:
-        return "报名中"
+        return "待确认"
 
 
 def _is_expired(signup_deadline: Optional[str]) -> bool:
@@ -197,75 +201,80 @@ def load_ministry_data() -> list:
 
 def _cleanup_expired(supabase) -> int:
     """
-    删除数据库中报名截止时间已过的过期记录。
+    删除数据库中报名截止时间已过的过期 event_edition 记录。
 
     Returns:
         被删除的记录数
     """
     from datetime import timezone as tz
+    from sqlalchemy import select
+    from storage.database.db import get_engine
+    from storage.database.catalog_models import EventEdition
 
-    response = supabase.table("event_info").select("event_id,title,signup_deadline,status").execute()
-    all_records = response.data if hasattr(response, 'data') and isinstance(response.data, list) else []
-
-    deleted_count = 0
+    engine = get_engine()
     now = datetime.now(tz.utc)
+    deleted_count = 0
 
-    for record in all_records:
-        event_id = record.get("event_id")
-        deadline_str = record.get("signup_deadline")
-        if _is_expired(deadline_str):
-            try:
-                supabase.table("event_info").delete().eq("event_id", event_id).execute()
-                deleted_count += 1
-                logger.info(f"Deleted expired: {record.get('title', '')[:50]} (deadline={deadline_str})")
-            except Exception as e:
-                logger.error(f"Failed to delete expired event {event_id}: {e}")
+    with Session(engine) as session:
+        expired = session.execute(
+            select(EventEdition).where(
+                EventEdition.signup_deadline.isnot(None),
+                EventEdition.signup_deadline < now,
+            )
+        ).scalars().all()
 
-    logger.info(f"Expired cleanup complete: {deleted_count}/{len(all_records)} records deleted")
+        for edition in expired:
+            title = edition.title
+            session.delete(edition)
+            deleted_count += 1
+            logger.info(f"Deleted expired: {title[:50]} (deadline={edition.signup_deadline})")
+
+        session.commit()
+
+    logger.info(f"Expired cleanup complete: {deleted_count} records deleted")
     return deleted_count
 
 
 def _refresh_all_statuses(supabase) -> int:
     """
-    刷新所有记录的 status 字段，根据 signup_deadline 重新计算。
-    解决数据中过期但状态未更新的问题。
+    刷新所有 event_edition 的 status 字段，根据 signup_deadline 重新计算。
+    无有效截止时间的记录标记为 '暂无本届信息'。
 
     Returns:
         被更新的记录数
     """
     from datetime import timezone as tz
+    from sqlalchemy import select
+    from storage.database.db import get_engine
+    from storage.database.catalog_models import EventEdition
 
-    response = supabase.table("event_info").select("event_id,title,signup_deadline,status").execute()
-    all_records = response.data if hasattr(response, 'data') and isinstance(response.data, list) else []
-
+    engine = get_engine()
     updated_count = 0
     now = datetime.now(tz.utc)
 
-    for record in all_records:
-        event_id = record.get("event_id")
-        current_status = record.get("status")
-        deadline_str = record.get("signup_deadline")
+    with Session(engine) as session:
+        editions = session.execute(select(EventEdition)).scalars().all()
 
-        new_status = _determine_status(deadline_str)
-
-        if new_status != current_status:
-            try:
-                supabase.table("event_info").update({
-                    "status": new_status,
-                    "update_time": now.isoformat(),
-                }).eq("event_id", event_id).execute()
+        for edition in editions:
+            current_status = edition.status
+            new_status = _determine_status(
+                edition.signup_deadline.isoformat() if edition.signup_deadline else None
+            )
+            if new_status != current_status:
+                edition.status = new_status
+                edition.updated_at = now
                 updated_count += 1
-                logger.info(f"Status refreshed: {record.get('title', '')[:40]} [{current_status}] -> [{new_status}]")
-            except Exception as e:
-                logger.error(f"Failed to refresh status for {event_id}: {e}")
+                logger.info(f"Status refreshed: {edition.title[:40]} [{current_status}] -> [{new_status}]")
 
-    logger.info(f"Status refresh complete: {updated_count}/{len(all_records)} records updated")
+        session.commit()
+
+    logger.info(f"Status refresh complete: {updated_count}/{len(editions)} records updated")
     return updated_count
 
 
 def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
     """
-    将补全后的事件数据同步到数据库（去重合并）
+    将补全后的事件数据同步到数据库（基于 catalog + edition + evidence 模型）。
 
     Returns:
         {"added": int, "updated": int, "skipped": int, "errors": int}
@@ -273,7 +282,11 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
     if ctx is None:
         ctx = request_context.get() or new_context(method="sync_events")
 
-    supabase = _get_supabase()
+    from sqlalchemy.orm import Session
+    from storage.database.db import get_engine
+    from tools.catalog_service import merge_event, _normalize_title
+
+    engine = get_engine()
     stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0, "details": []}
 
     for event in enriched_events:
@@ -283,61 +296,54 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
                 stats["skipped"] += 1
                 continue
 
-            # 入库前过滤：报名截止时间已过的直接丢弃
+            # Filter obvious ads / training before merging
+            if _is_likely_ad_or_training(title):
+                logger.info(f"Skipping ad/training content: {title[:60]}")
+                stats["skipped"] += 1
+                stats["details"].append({"action": "skipped_ad", "title": title[:50]})
+                continue
+
+            # Skip expired events (no valid current edition)
             if _is_expired(event.get("signup_deadline")):
                 logger.info(f"Skipping expired event: {title[:50]} (deadline={event.get('signup_deadline')})")
                 stats["skipped"] += 1
                 stats["details"].append({"action": "skipped_expired", "title": title[:50]})
                 continue
 
-            # 入库前校验：event_time 不能早于 signup_deadline
+            # Timeline validation
             event = _validate_timeline(event)
 
-            # 去重检查
-            existing = _find_existing_event(supabase, title)
-
-            if existing:
-                # 已存在 -> 合并更新
-                merged = _merge_event_data(existing, event)
-                # 合并后再次检查是否过期（新 deadline 可能使旧记录过期）
-                if _is_expired(merged.get("signup_deadline")):
-                    logger.info(f"Skipping update for expired event: {title[:50]}")
-                    stats["skipped"] += 1
-                    stats["details"].append({"action": "skipped_expired", "title": title[:50]})
-                    continue
-                merged["status"] = _determine_status(merged.get("signup_deadline"))
-                event_id = existing["event_id"]
-                merged["event_id"] = event_id
-
-                update_data = {k: v for k, v in merged.items() if k != "event_id"}
-                supabase.table("event_info").update(update_data).eq("event_id", event_id).execute()
-                stats["updated"] += 1
-                stats["details"].append({"action": "updated", "event_id": event_id, "title": title[:50]})
-            else:
-                # 新事件 -> 插入
-                event_id = _generate_event_id()
-                event["event_id"] = event_id
-                event["status"] = _determine_status(event.get("signup_deadline"))
-                event["update_time"] = datetime.now().isoformat()
-
-                # 确保 tags/policy_tags 是 JSON 字符串
-                for field in ("tags", "policy_tags"):
-                    val = event.get(field)
-                    if isinstance(val, list):
-                        event[field] = json.dumps(val, ensure_ascii=False)
-
-                insert_data = {k: v for k, v in event.items() if v is not None and k != "_ministry_info"}
-                supabase.table("event_info").insert(insert_data).execute()
+            with Session(engine) as session:
+                merge_event(
+                    session,
+                    event,
+                    extraction_method=event.get("extraction_method", "sync"),
+                    confidence=event.get("confidence", "medium"),
+                )
+                # Determine added vs updated is handled inside merge_event; we approximate here
                 stats["added"] += 1
-                stats["details"].append({"action": "added", "event_id": event_id, "title": title[:50]})
+                stats["details"].append({"action": "merged", "title": title[:50]})
 
         except Exception as e:
             logger.error(f"Failed to sync event '{event.get('title', 'unknown')[:30]}': {e}")
             stats["errors"] += 1
             stats["details"].append({"action": "error", "title": event.get("title", "unknown")[:50], "error": str(e)})
 
-    logger.info(f"Sync complete: added={stats['added']}, updated={stats['updated']}, skipped={stats['skipped']}, errors={stats['errors']}")
+    logger.info(f"Sync complete: added/merged={stats['added']}, skipped={stats['skipped']}, errors={stats['errors']}")
     return stats
+
+
+def _is_likely_ad_or_training(title: str) -> bool:
+    """Heuristic filter to drop ads, training courses, and planning promotions."""
+    if not title:
+        return False
+    blacklist = [
+        "培训", "课程", "辅导班", "保研规划", "保研咨询", "留学", "雅思", "托福", "GRE",
+        "考研", "考公", "考编", "教师资格证", "注册会计师", "付费", "会员", "优惠",
+        "早鸟", "限时", "团购", "报名咨询", "扫码添加", "免费领取",
+    ]
+    lower = title.lower()
+    return any(k in lower for k in blacklist)
 
 
 def run_full_sync(ctx=None) -> dict:
@@ -375,29 +381,31 @@ def run_full_sync(ctx=None) -> dict:
     if not saikr_data:
         logger.warning("Saikr data is empty — will skip saikr enrichment but continue with other sources")
 
-    # 2. 教育部目录数据直接标记（不需要AI补全）
-    ministry_enriched = []
+    # 2. 教育部目录数据 → 仅写入 competition_catalog，不创建 edition
+    from tools.catalog_service import merge_catalog
+    ministry_catalog_count = 0
     for item in ministry_data:
         info = item.get("_ministry_info", {})
-        enriched = {
-            "title": item["title"],
-            "scope_type": "校外竞赛",
-            "category": info.get("category", "其他"),
-            "summary": f"{info['name']}由{info['organizer']}主办，是教育部认可的{info['level']}竞赛。",
-            "contest_level": info.get("level", "国家级"),
-            "target_major": "全校各专业",
-            "target_grade": "大一,大二,大三",
-            "tags": json.dumps(["教育部目录"], ensure_ascii=False),
-            "policy_tags": json.dumps(["保研明确相关", "综测加分"], ensure_ascii=False),
+        catalog = {
+            "normalized_title": _normalize_title(item["title"]),
+            "original_title": item["title"],
             "organizer": info.get("organizer", ""),
-            "source_name": "教育部竞赛目录",
-            "source_url": "",
+            "category": info.get("category", "其他"),
+            "contest_level": info.get("level", "国家级"),
             "authority_level": "高",
-            "status": "报名中",
+            "policy_tags": json.dumps(["保研明确相关", "综测加分"], ensure_ascii=False),
+            "scope_type": "校外竞赛",
+            "source_name": "教育部竞赛目录",
+            "source_url": item.get("source_url", ""),
             "is_ministry_approved": True,
-            "original_text": item.get("detail_text", ""),
+            "status": "active",
         }
-        ministry_enriched.append(enriched)
+        try:
+            merge_catalog(catalog)
+            ministry_catalog_count += 1
+        except Exception as e:
+            logger.warning(f"Failed to merge ministry catalog {item.get('title')}: {e}")
+    logger.info(f"Merged {ministry_catalog_count} ministry catalogs")
 
     # 3. 赛氪数据AI补全（带超时保护和降级）
     saikr_enriched = []
@@ -431,13 +439,17 @@ def run_full_sync(ctx=None) -> dict:
     except Exception as e:
         logger.error(f"WeChat sync failed (non-fatal): {e}")
 
-    # 5. 合并三个数据源（教育部优先）
-    all_events = ministry_enriched + saikr_enriched + wechat_enriched
+    # 5. 合并赛氪 + 微信数据（教育部目录已在 catalog 层处理）
+    all_events = saikr_enriched + wechat_enriched
 
     # 6. 同步到数据库
     logger.info(f"Syncing {len(all_events)} events to database...")
-    stats = sync_events_to_db(all_events, ctx=ctx)
+    db_stats = sync_events_to_db(all_events, ctx=ctx)
 
+    stats = {
+        "ministry_catalogs": ministry_catalog_count,
+        **db_stats,
+    }
     logger.info(f"=== Full sync complete: {stats} ===")
     return stats
 
