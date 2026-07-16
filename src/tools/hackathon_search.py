@@ -28,6 +28,16 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_html_tags(text: str) -> str:
+    """Remove HTML tags, scripts, styles and normalize whitespace."""
+    text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"&nbsp;", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "data")
 
 # ─── 环境变量默认值 ───
@@ -122,6 +132,7 @@ _HACKATHON_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in [
         r"黑客松",
+        r"编程马拉松",
         r"\bhackathon\b",
         r"\bhack\s?day\b",
         r"\bbuildathon\b",
@@ -141,6 +152,12 @@ _EXCLUSION_PATTERNS = [
         r"招聘", r"宣讲会", r"career\s+fair",
         r"submissions?\s+closed", r"event\s+ended",
         r"application\s+period\s+has\s+ended",
+        # Aggregator / listing articles
+        r"best\s+places?\s+to\s+find",
+        r"top\s+\d+\s+hackathons?",
+        r"ultimate\s+list",
+        r"hackathons?\s+to\s+join",
+        r"upcoming\s+hackathons?\s*(in\s+)?\d{4}",
     ]
 ]
 
@@ -216,6 +233,8 @@ _DATE_PATTERNS_CN = [
     (re.compile(r"报名时间[：:].*?(?:至|到|-|–).*?(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日"), "date_only"),
     # 比赛时间：2026年8月1日
     (re.compile(r"(?:比赛|活动|举办)时间[：:]\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日"), "date_only"),
+    # Date ranges: 2025年11月20日至2026年4月7日 注册 / 截止
+    (re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*(?:至|到|-|–)\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*(?:注册|截止|报名|deadline)", re.I), "range_cn_reg"),
     # 2026/07/15
     (re.compile(r"(\d{4})/(\d{1,2})/(\d{1,2})"), "iso"),
 ]
@@ -302,6 +321,19 @@ def extract_dates(text: str, now: Optional[datetime] = None) -> dict:
                         result["signup_deadline"] = date_str
                         result["has_full_deadline"] = True
                         break
+                elif ptype == "range_cn_reg":
+                    # "2025年11月20日至2026年4月7日 注册" → use the later date as deadline
+                    y2, mo2, d2 = int(m.group(4)), int(m.group(5)), int(m.group(6))
+                    date_str = _make_iso(y2, mo2, d2)
+                    if date_str:
+                        result["signup_deadline"] = date_str
+                        result["has_full_deadline"] = True
+                        # Also extract the earlier date as potential event_time
+                        y1, mo1, d1 = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                        et_str = _make_iso(y1, mo1, d1)
+                        if et_str and et_str != date_str:
+                            result["event_time"] = et_str
+                        break
 
     # Separate event_time extraction for CN
     event_cn = re.search(r"(?:比赛|活动|举办)时间[：:]\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", text)
@@ -336,35 +368,27 @@ def fetch_detail_page(url: str, timeout: int = 15, retries: int = 2) -> Optional
                 time.sleep(delay * (attempt + 1))
             resp = requests.get(
                 url, headers=headers, timeout=timeout,
-                allow_redirects=True, stream=True,
+                allow_redirects=True,
             )
             if resp.status_code != 200:
                 logger.debug(f"HTTP {resp.status_code} for {url[:60]}")
                 return None
 
-            chunks: List[bytes] = []
-            total = 0
-            for chunk in resp.iter_content(chunk_size=8192):
-                total += len(chunk)
-                if total > max_bytes:
-                    logger.debug(f"Page too large ({total} bytes): {url[:60]}")
-                    return None
-                chunks.append(chunk)
+            # Check size before decoding
+            content = resp.content
+            if len(content) > max_bytes:
+                logger.debug(f"Page too large ({len(content)} bytes): {url[:60]}")
+                return None
 
-            raw = b"".join(chunks)
-            # Try to detect encoding
-            content = resp.apparent_encoding or "utf-8"
+            # Detect encoding
+            encoding = resp.encoding or resp.apparent_encoding or "utf-8"
             try:
-                text = raw.decode(content, errors="replace")
+                text = content.decode(encoding, errors="replace")
             except Exception:
-                text = raw.decode("utf-8", errors="replace")
+                text = content.decode("utf-8", errors="replace")
 
             # Strip tags
-            text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<[^>]+>", " ", text)
-            text = re.sub(r"&nbsp;", " ", text)
-            text = re.sub(r"\s+", " ", text).strip()
+            text = _strip_html_tags(text)
             return text[:8192]
 
         except requests.Timeout:
