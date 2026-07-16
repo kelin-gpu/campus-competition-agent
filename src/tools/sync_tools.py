@@ -34,6 +34,27 @@ def trigger_full_sync() -> str:
 
 
 @tool
+def trigger_quick_sync() -> str:
+    """触发快速全量同步：跳过 LLM 字段补全，仅使用规则兜底完成数据抓取和入库。
+    适用于定时同步、LLM 不可用或需要快速验证数据链路的场景。"""
+    ctx = request_context.get() or new_context(method="trigger_quick_sync")
+    try:
+        from tools.data_sync_workflow import run_full_sync
+        stats = run_full_sync(ctx=ctx, skip_enrichment=True)
+        return (
+            f"快速同步完成（已跳过 LLM 补全）！\n"
+            f"- 教育部目录：{stats.get('ministry_catalogs', 0)} 条\n"
+            f"- 新增：{stats['added']} 条\n"
+            f"- 更新：{stats['updated']} 条\n"
+            f"- 跳过：{stats['skipped']} 条\n"
+            f"- 错误：{stats['errors']} 条"
+        )
+    except Exception as e:
+        logger.error(f"Quick sync failed: {e}", exc_info=True)
+        return f"快速同步失败：{str(e)}"
+
+
+@tool
 def trigger_incremental_sync(raw_events_json: str) -> str:
     """触发增量数据同步：传入新的原始数据（JSON数组格式），进行AI补全后去重入库。
     每条数据应包含 title、detail_text、url 等字段。

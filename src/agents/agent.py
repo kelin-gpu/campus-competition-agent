@@ -18,6 +18,7 @@ from tools.event_parse_tool import parse_and_save_notification
 from tools.web_search_tool import web_search_events
 from tools.sync_tools import (
     trigger_full_sync,
+    trigger_quick_sync,
     trigger_incremental_sync,
     enrich_single_event_tool,
     get_sync_status,
@@ -98,6 +99,7 @@ def build_agent(ctx=None):
         parse_and_save_notification,
         web_search_events,
         trigger_full_sync,
+        trigger_quick_sync,
         trigger_incremental_sync,
         enrich_single_event_tool,
         get_sync_status,

@@ -18,6 +18,7 @@ from typing import Optional
 from coze_coding_utils.log.write_log import request_context
 from coze_coding_utils.runtime_ctx.context import new_context
 from sqlalchemy.orm import Session
+from storage.database.db import get_session
 
 from tools.event_enrichment import (
     enrich_single_event,
@@ -338,20 +339,26 @@ def _is_likely_ad_or_training(title: str) -> bool:
     if not title:
         return False
     blacklist = [
-        "培训", "课程", "辅导班", "保研规划", "保研咨询", "留学", "雅思", "托福", "GRE",
+        "培训", "课程", "辅导班", "保研规划", "保研咨询", "保研定位", "留学", "雅思", "托福", "GRE",
         "考研", "考公", "考编", "教师资格证", "注册会计师", "付费", "会员", "优惠",
         "早鸟", "限时", "团购", "报名咨询", "扫码添加", "免费领取",
     ]
-    lower = title.lower()
-    return any(k in lower for k in blacklist)
+    # 去掉中英文括号、空格、书名号等干扰字符后再匹配，避免"保研）定位"漏过
+    normalized = re.sub(r"[\s（）()【】\[\]《》<>「」]", "", title.lower())
+    return any(k in normalized for k in blacklist)
 
 
-def run_full_sync(ctx=None) -> dict:
+def run_full_sync(ctx=None, skip_enrichment: bool = False) -> dict:
     """
     执行完整的数据同步流程：
     1. 加载赛氪数据 + 教育部目录 + 微信公众号
-    2. AI字段补全
+    2. AI字段补全（可被 skip_enrichment 跳过）
     3. 去重合并入库
+
+    Args:
+        ctx: 请求上下文
+        skip_enrichment: 是否跳过 LLM 字段补全。默认 False。
+                         为 True 时仅做规则级 fallback，用于快速同步或 LLM 不可用时。
 
     Returns:
         同步统计信息
@@ -384,32 +391,45 @@ def run_full_sync(ctx=None) -> dict:
     # 2. 教育部目录数据 → 仅写入 competition_catalog，不创建 edition
     from tools.catalog_service import merge_catalog
     ministry_catalog_count = 0
-    for item in ministry_data:
-        info = item.get("_ministry_info", {})
-        catalog = {
-            "normalized_title": _normalize_title(item["title"]),
-            "original_title": item["title"],
-            "organizer": info.get("organizer", ""),
-            "category": info.get("category", "其他"),
-            "contest_level": info.get("level", "国家级"),
-            "authority_level": "高",
-            "policy_tags": json.dumps(["保研明确相关", "综测加分"], ensure_ascii=False),
-            "scope_type": "校外竞赛",
-            "source_name": "教育部竞赛目录",
-            "source_url": item.get("source_url", ""),
-            "is_ministry_approved": True,
-            "status": "active",
-        }
-        try:
-            merge_catalog(catalog)
-            ministry_catalog_count += 1
-        except Exception as e:
-            logger.warning(f"Failed to merge ministry catalog {item.get('title')}: {e}")
-    logger.info(f"Merged {ministry_catalog_count} ministry catalogs")
+    db_session = get_session()
+    try:
+        for item in ministry_data:
+            info = item.get("_ministry_info", {})
+            catalog = {
+                "normalized_title": _normalize_title(item["title"]),
+                "original_title": item["title"],
+                "organizer": info.get("organizer", ""),
+                "category": info.get("category", "其他"),
+                "contest_level": info.get("level", "国家级"),
+                "authority_level": "高",
+                "policy_tags": json.dumps(["保研明确相关", "综测加分"], ensure_ascii=False),
+                "scope_type": "校外竞赛",
+                "source_name": "教育部竞赛目录",
+                "source_url": item.get("source_url", ""),
+                "is_ministry_approved": True,
+                "status": "active",
+            }
+            try:
+                merge_catalog(db_session, catalog)
+                ministry_catalog_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to merge ministry catalog {item.get('title')}: {e}")
+        logger.info(f"Merged {ministry_catalog_count} ministry catalogs")
+    finally:
+        db_session.close()
 
     # 3. 赛氪数据AI补全（带超时保护和降级）
     saikr_enriched = []
-    if saikr_data:
+    if skip_enrichment:
+        logger.info("skip_enrichment=True, using rule-based fallback for saikr data")
+        from tools.event_enrichment import _rule_based_fallback, match_ministry_contest
+        for item in saikr_data or []:
+            fallback = _rule_based_fallback(item, match_ministry_contest(item.get("title", "")))
+            fallback["source_url"] = item.get("source_url", "") or item.get("detail_url", "")
+            fallback["source_name"] = "赛氪"
+            fallback["title"] = item.get("title", "")
+            saikr_enriched.append(fallback)
+    elif saikr_data:
         logger.info(f"Enriching {len(saikr_data)} saikr events with AI...")
         try:
             saikr_enriched = enrich_batch(saikr_data, ctx=ctx)
@@ -417,10 +437,10 @@ def run_full_sync(ctx=None) -> dict:
         except Exception as e:
             logger.warning(f"AI enrichment failed ({e}), falling back to rule-based enrichment")
             # 降级：用规则补全代替LLM
-            from tools.event_enrichment import _rule_based_fallback
+            from tools.event_enrichment import _rule_based_fallback, match_ministry_contest
             saikr_enriched = []
             for item in saikr_data:
-                fallback = _rule_based_fallback(item.get("detail_text", ""), item.get("title", ""))
+                fallback = _rule_based_fallback(item, match_ministry_contest(item.get("title", "")))
                 fallback["source_url"] = item.get("source_url", "") or item.get("detail_url", "")
                 fallback["source_name"] = "赛氪"
                 fallback["title"] = item.get("title", "")
@@ -432,10 +452,13 @@ def run_full_sync(ctx=None) -> dict:
     # 4. 微信公众号数据抓取 + AI补全
     wechat_enriched = []
     try:
-        from tools.wechat_data_source import enrich_wechat_events
-        logger.info("Fetching and enriching WeChat events...")
-        wechat_enriched = enrich_wechat_events(hours=0, ctx=ctx)  # hours=0 不过滤时间，全量抓取
-        logger.info(f"Got {len(wechat_enriched)} WeChat events")
+        if skip_enrichment:
+            logger.info("skip_enrichment=True, skipping WeChat AI enrichment")
+        else:
+            from tools.wechat_data_source import enrich_wechat_events
+            logger.info("Fetching and enriching WeChat events...")
+            wechat_enriched = enrich_wechat_events(hours=0, ctx=ctx)  # hours=0 不过滤时间，全量抓取
+            logger.info(f"Got {len(wechat_enriched)} WeChat events")
     except Exception as e:
         logger.error(f"WeChat sync failed (non-fatal): {e}")
 

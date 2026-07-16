@@ -15,6 +15,7 @@
     "parse_and_save_notification",
     "web_search_events",
     "trigger_full_sync",
+    "trigger_quick_sync",
     "trigger_incremental_sync",
     "trigger_wechat_sync",
     "start_scheduled_sync",
