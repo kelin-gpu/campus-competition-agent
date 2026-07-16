@@ -1,23 +1,18 @@
 """
 用户画像管理 + 个性化推荐工具
 功能：
-1. 用户画像 CRUD（单用户 MVP 版本）
+1. 用户画像 CRUD（按扣子运行时用户隔离）
 2. 基于画像的个性化推荐（加权打分排序）
 3. 从对话中自动抽取画像信息
 """
 import json
 import logging
 from datetime import datetime
-from typing import Optional
-
 from langchain.tools import tool
 from coze_coding_utils.log.write_log import request_context
-from coze_coding_utils.runtime_ctx.context import new_context
+from tools.user_identity import require_context_user_id
 
 logger = logging.getLogger(__name__)
-
-# 默认用户 ID（MVP 单用户版本）
-DEFAULT_USER_ID = "default_user"
 
 # Supabase client (lazy init)
 _supabase_client = None
@@ -29,6 +24,11 @@ def _get_supabase():
         from storage.database.supabase_client import get_supabase_client
         _supabase_client = get_supabase_client()
     return _supabase_client
+
+
+def _current_user_id() -> str:
+    """Read the authenticated user identity injected by the Coze runtime."""
+    return require_context_user_id(request_context.get())
 
 
 # ============================================================
@@ -78,10 +78,11 @@ def _parse_json_field(val) -> list:
 
 
 @tool
-def get_user_profile(user_id: str = "default_user") -> str:
+def get_user_profile() -> str:
     """获取用户画像信息。包含专业、年级、学院、兴趣标签、关注竞赛等。
-    如果不传 user_id，默认获取当前用户的画像。"""
+    用户身份由扣子运行上下文自动提供，不接受手工 user_id。"""
     try:
+        user_id = _current_user_id()
         profile = _get_or_create_profile(user_id)
         result = {
             "user_id": profile.get("user_id"),
@@ -101,11 +102,12 @@ def get_user_profile(user_id: str = "default_user") -> str:
 
 
 @tool
-def update_user_profile(user_id: str, fields_json: str) -> str:
+def update_user_profile(fields_json: str) -> str:
     """更新用户画像信息。fields_json 是 JSON 字符串，支持的字段：
     nickname, college, major, grade, interest_tags(JSON数组), notify_preference(daily/weekly/never)
     示例：'{"major": "计算机科学与技术", "grade": "大二", "interest_tags": ["算法竞赛", "人工智能"]}'"""
     try:
+        user_id = _current_user_id()
         fields = json.loads(fields_json)
         if not isinstance(fields, dict):
             return "输入格式错误：fields_json 必须是 JSON 对象"
@@ -143,9 +145,10 @@ def update_user_profile(user_id: str, fields_json: str) -> str:
 
 
 @tool
-def add_focus_contest(user_id: str, event_id: str) -> str:
+def add_focus_contest(event_id: str) -> str:
     """添加关注的竞赛/活动。event_id 是竞赛的唯一编号。"""
     try:
+        user_id = _current_user_id()
         supabase = _get_supabase()
         profile = _get_or_create_profile(user_id)
         focus = _parse_json_field(profile.get("focus_contests"))
@@ -166,9 +169,10 @@ def add_focus_contest(user_id: str, event_id: str) -> str:
 
 
 @tool
-def remove_focus_contest(user_id: str, event_id: str) -> str:
+def remove_focus_contest(event_id: str) -> str:
     """取消关注竞赛/活动。event_id 是竞赛的唯一编号。"""
     try:
+        user_id = _current_user_id()
         supabase = _get_supabase()
         profile = _get_or_create_profile(user_id)
         focus = _parse_json_field(profile.get("focus_contests"))
@@ -270,18 +274,16 @@ def _calculate_relevance_score(event: dict, profile: dict) -> float:
 
 
 @tool
-def get_personalized_recommendations(user_id: str = "default_user", limit: int = 10) -> str:
+def get_personalized_recommendations(limit: int = 10) -> str:
     """获取基于用户画像的个性化竞赛/活动推荐列表。
     推荐算法综合考虑：专业匹配度、年级匹配度、兴趣标签、教育部目录、DDL紧迫度、竞赛级别。
-    如果不传 user_id，默认使用当前用户画像。"""
+    用户身份由扣子运行上下文自动提供。"""
     try:
+        user_id = _current_user_id()
         supabase = _get_supabase()
         profile = _get_or_create_profile(user_id)
 
         # 查询所有报名中的事件
-        from datetime import datetime as dt, timezone
-        now = dt.now(timezone.utc).isoformat()
-
         response = supabase.table("event_info").select("*").in_(
             "status", ["报名中", "即将截止"]
         ).execute()
