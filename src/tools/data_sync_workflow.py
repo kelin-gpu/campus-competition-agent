@@ -161,7 +161,7 @@ def load_saikr_data() -> list:
     try:
         from tools.saikr_crawler import crawl_saikr_hot_contests
         logger.info("Crawling saikr hot contests online...")
-        result = crawl_saikr_hot_contests(limit=30, sleep_seconds=0.8, fetch_details=True)
+        result = crawl_saikr_hot_contests(limit=50, sleep_seconds=0.8, fetch_details=True)
         records = result.get("records", [])
         if not records:
             logger.warning(f"Saikr crawler returned {len(records)} records (empty)")
