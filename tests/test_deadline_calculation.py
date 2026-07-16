@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.tools.event_schema import calculate_days_remaining, is_deadline_expired
+from tools.event_schema import calculate_days_remaining, is_deadline_expired
 
 
 NOW = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
