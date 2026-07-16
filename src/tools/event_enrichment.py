@@ -8,16 +8,14 @@ AI字段补全工作流（Skill）
 import json
 import os
 import re
-import signal
 import logging
-import signal
 from datetime import datetime
 from typing import Optional
 
-from coze_coding_dev_sdk import LLMClient
 from coze_coding_utils.log.write_log import request_context
-from coze_coding_utils.runtime_ctx.context import new_context
+from coze_coding_utils.runtime_ctx.context import default_headers, new_context
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +24,20 @@ _ministry_contests_cache = None
 
 # 数据文件路径
 ASSETS_DIR = os.path.join(os.getenv("COZE_WORKSPACE_PATH", "/workspace/projects"), "assets", "data")
+
+
+def _build_enrichment_llm(ctx, timeout: int) -> ChatOpenAI:
+    """Create a Coze-compatible client with an HTTP timeout safe in any thread."""
+    return ChatOpenAI(
+        model="doubao-seed-2-0-lite-260215",
+        api_key=os.getenv("COZE_WORKLOAD_IDENTITY_API_KEY"),
+        base_url=os.getenv("COZE_INTEGRATION_MODEL_BASE_URL"),
+        temperature=0.2,
+        max_completion_tokens=2000,
+        timeout=timeout,
+        default_headers=default_headers(ctx),
+        extra_body={"thinking": {"type": "disabled"}},
+    )
 
 
 def _load_ministry_contests() -> list:
@@ -196,32 +208,14 @@ def enrich_single_event(raw_event: dict, ctx=None, llm_timeout: int = 30) -> dic
     # 2. 构建提示词并调用LLM
     prompt = _build_enrichment_prompt(raw_event, ministry_match)
 
-    client = LLMClient(ctx=ctx)
     messages = [
         SystemMessage(content="你是一个竞赛信息结构化提取专家，只输出JSON，不输出其他内容。"),
         HumanMessage(content=prompt)
     ]
 
-    # 设置超时保护
-    import signal
-
-    class LLMTimeoutError(Exception):
-        pass
-
-    def _timeout_handler(signum, frame):
-        raise LLMTimeoutError(f"LLM call timed out after {llm_timeout}s")
-
-    old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-    signal.alarm(llm_timeout)
-
     try:
-        response = client.invoke(
-            messages=messages,
-            model="doubao-seed-2-0-lite-260215",
-            temperature=0.2,
-            max_completion_tokens=2000
-        )
-        signal.alarm(0)  # 取消超时
+        client = _build_enrichment_llm(ctx, timeout=llm_timeout)
+        response = client.invoke(messages)
         content = response.content
         if isinstance(content, list):
             content = " ".join(
@@ -240,17 +234,10 @@ def enrich_single_event(raw_event: dict, ctx=None, llm_timeout: int = 30) -> dic
                 content_str = content_str[:-3].strip()
 
         enriched = json.loads(content_str)
-    except LLMTimeoutError as e:
-        logger.warning(f"LLM enrichment timed out for '{title}': {e}")
-        enriched = _rule_based_fallback(raw_event, ministry_match)
     except Exception as e:
-        signal.alarm(0)  # 确保取消超时
         logger.error(f"LLM enrichment failed for '{title}': {e}")
         # Fallback: 使用规则提取基本信息
         enriched = _rule_based_fallback(raw_event, ministry_match)
-    finally:
-        signal.signal(signal.SIGALRM, old_handler)  # 恢复原始handler
-        signal.alarm(0)  # 确保取消
 
     # 3. 确保教育部匹配信息被正确标记
     if ministry_match:
@@ -319,14 +306,6 @@ def _rule_based_fallback(raw_event: dict, ministry_match: Optional[dict] = None)
     return result
 
 
-class _EnrichTimeout(Exception):
-    pass
-
-
-def _timeout_handler(signum, frame):
-    raise _EnrichTimeout("LLM调用超时")
-
-
 def enrich_batch(raw_events: list, ctx=None, per_record_timeout: int = 30, total_timeout: int = 600) -> list:
     """
     批量AI字段补全（带超时保护）
@@ -364,16 +343,11 @@ def enrich_batch(raw_events: list, ctx=None, per_record_timeout: int = 30, total
         logger.info(f"Enriching event {i+1}/{total}: {event.get('title', 'unknown')[:30]}...")
 
         try:
-            # 设置单条超时（仅Unix系统支持SIGALRM）
-            if hasattr(signal, 'SIGALRM'):
-                old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-                signal.alarm(per_record_timeout)
-
-            enriched = enrich_single_event(event, ctx=ctx)
-
-            if hasattr(signal, 'SIGALRM'):
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+            enriched = enrich_single_event(
+                event,
+                ctx=ctx,
+                llm_timeout=per_record_timeout,
+            )
 
             # 检查LLM是否真的返回了有效数据
             if not enriched.get("summary") and not enriched.get("category"):
@@ -385,19 +359,10 @@ def enrich_batch(raw_events: list, ctx=None, per_record_timeout: int = 30, total
                 results.append(enriched)
                 llm_success += 1
 
-        except _EnrichTimeout:
-            logger.warning(f"LLM超时({per_record_timeout}s)，降级: {event.get('title', 'unknown')[:40]}")
-            fallback = _rule_based_fallback(event, match_ministry_contest(event.get("title", "")))
-            results.append(fallback)
-            llm_failed += 1
         except Exception as e:
             logger.error(f"Failed to enrich event {i+1}: {e}")
             fallback = _rule_based_fallback(event, match_ministry_contest(event.get("title", "")))
             results.append(fallback)
             llm_failed += 1
-        finally:
-            if hasattr(signal, 'SIGALRM'):
-                signal.alarm(0)
-
     logger.info(f"Enrichment complete: LLM成功={llm_success}, 降级={llm_failed}, 总耗时={time.time()-start_time:.1f}s")
     return results

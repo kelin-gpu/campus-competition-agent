@@ -18,7 +18,11 @@ from tools.wechat_crawler import (
     is_relevant,
     WECHAT_ACCOUNTS,
 )
-from tools.event_enrichment import enrich_single_event
+from tools.event_enrichment import (
+    _rule_based_fallback,
+    enrich_single_event,
+    match_ministry_contest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +112,10 @@ def enrich_wechat_events(hours: int = 24, ctx=None) -> list:
             enriched.append(result)
         except Exception as e:
             logger.error(f"Failed to enrich WeChat event '{title[:30]}': {e}")
+            result = _rule_based_fallback(raw_event, match_ministry_contest(title))
+            result["source_name"] = article.get("source_name", "微信公众号")
+            result["scope_type"] = "校内活动"
+            enriched.append(result)
 
     logger.info(f"Enriched {len(enriched)} WeChat events")
     return enriched
