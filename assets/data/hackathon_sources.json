@@ -1,0 +1,61 @@
+{
+  "known_platforms": [
+    {
+      "name": "Devpost",
+      "domain": "devpost.com",
+      "base_url": "https://devpost.com/hackathons",
+      "authority": "high",
+      "notes": "全球最大黑客松平台，官方活动页"
+    },
+    {
+      "name": "Devfolio",
+      "domain": "devfolio.co",
+      "base_url": "https://devfolio.co/hackathons",
+      "authority": "high",
+      "notes": "国际黑客松报名平台"
+    },
+    {
+      "name": "MLH",
+      "domain": "mlh.io",
+      "base_url": "https://mlh.io/seasons/2026/events",
+      "authority": "high",
+      "notes": "Major League Hacking 官方活动日历"
+    },
+    {
+      "name": "HackClub",
+      "domain": "hackclub.com",
+      "base_url": "https://hackclub.com/hackathons",
+      "authority": "medium",
+      "notes": "高中生/大学生黑客松社区"
+    }
+  ],
+  "search_queries": [
+    "黑客松 报名 2026",
+    "大学生 黑客松 报名中",
+    "AI 黑客松 报名 截止",
+    "线上黑客松 开放报名",
+    "hackathon registration open 2026",
+    "student hackathon apply deadline",
+    "AI hackathon application open",
+    "upcoming hackathon online 2026",
+    "site:devpost.com hackathon",
+    "site:devfolio.co hackathon"
+  ],
+  "exclusion_patterns": [
+    "往届", "回顾", "获奖名单", "获奖作品", "结果公布",
+    "回顾视频", "精彩瞬间", "圆满结束", "成功举办",
+    "past events", "winners", "recap", "highlights",
+    "去年", "历届", "上一届",
+    "培训课", "训练营", "workshop only",
+    "招聘", "宣讲会", "career fair"
+  ],
+  "max_future_days": 400,
+  "fetch_timeout_sec": 15,
+  "fetch_retries": 2,
+  "fetch_delay_sec": 1.5,
+  "max_page_bytes": 2097152,
+  "user_agents": [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+  ]
+}
