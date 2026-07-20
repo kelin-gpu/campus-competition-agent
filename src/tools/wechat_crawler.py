@@ -561,23 +561,29 @@ def crawl_wechat_events(hours: int = 24) -> list:
             detail_text = article.get("summary", "")
             if not detail_text:
                 continue
+            title = article.get("title", "")
+            publish_time = article.get("publish_time", "")
+            author = ""
         else:
             detail_text = detail.get("detail_text", "")
+            title = detail.get("title") or article.get("title", "")
+            publish_time = detail.get("publish_time") or article.get("publish_time", "")
+            author = detail.get("author", "")
 
         # 二次过滤：正文也需包含关键词
-        if not is_relevant(article.get("title", ""), detail_text):
+        if not is_relevant(title, detail_text):
             continue
 
         # 生成唯一 ID（基于 URL 的 hash）
         url_hash = hashlib.md5(url.encode()).hexdigest()[:8].upper()
 
         results.append({
-            "title": detail.get("title") or article.get("title", ""),
+            "title": title,
             "detail_text": detail_text,
             "url": url,
-            "publish_time": detail.get("publish_time") or article.get("publish_time", ""),
+            "publish_time": publish_time,
             "source_name": article.get("source_name", "微信公众号"),
-            "author": detail.get("author", ""),
+            "author": author,
             "_wechat_id": f"WX-{url_hash}",
         })
 

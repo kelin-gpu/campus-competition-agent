@@ -400,7 +400,7 @@ def _cross_source_dedup(candidates: List[HackathonCandidate]) -> List[HackathonC
     seen_platform_ids: set = set()
 
     for c in candidates:
-        pid = c.platform_id
+        pid = getattr(c, 'platform_id', None)
         if pid and pid in seen_platform_ids:
             continue
         if pid:
