@@ -39,6 +39,7 @@ class HackathonCandidate:
     source_authority: str = "low"  # high / medium / low
     raw_date_text: str = ""
     extraction_method: str = ""  # html_parse / json / search_discovery / api
+    platform_id: Optional[str] = None
 
     def to_event_dict(self) -> dict:
         """Convert to dict suitable for sync_events_to_db."""

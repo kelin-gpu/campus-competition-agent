@@ -2,7 +2,7 @@
 黑客松专项同步工作流 v2。
 
 架构：
-- 多来源适配器并行发现
+- 多来源适配器发现
 - 列表页展开为事件级候选
 - 预去重后再抓详情
 - 上下文感知日期解析
@@ -17,13 +17,12 @@ import os
 import re
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from tools.data_sync_workflow import sync_events_to_db
-from tools.hackathon_adapters import HackathonCandidate
+from tools.hackathon_adapters.base import HackathonCandidate
 from tools.hackathon_adapters.devfolio import DevfolioAdapter
 from tools.hackathon_adapters.mlh import MLHAdapter
 from tools.hackathon_adapters.hackclub import HackClubAdapter
@@ -400,7 +399,7 @@ def _cross_source_dedup(candidates: List[HackathonCandidate]) -> List[HackathonC
     seen_platform_ids: set = set()
 
     for c in candidates:
-        pid = c.platform_id
+        pid = getattr(c, "platform_id", None)
         if pid and pid in seen_platform_ids:
             continue
         if pid:
@@ -444,10 +443,10 @@ def _parse_generic_detail(cand: HackathonCandidate, html: str, text: str) -> Hac
 
 def _candidate_to_event(cand: HackathonCandidate) -> dict:
     """Convert HackathonCandidate to event dict for sync_events_to_db."""
-    tags = cand.tags or ["黑客松"]
-    if cand.mode == "online":
+    tags = list(cand.tags or ["黑客松"])
+    if cand.mode == "online" and "线上" not in tags:
         tags.append("线上")
-    elif cand.mode == "offline":
+    elif cand.mode == "offline" and "线下" not in tags:
         tags.append("线下")
 
 
@@ -465,7 +464,10 @@ def _candidate_to_event(cand: HackathonCandidate) -> dict:
         "policy_tags": "",
         "source_name": cand.source_name or _determine_source_name("", cand.source_url or ""),
         "source_url": cand.source_url or "",
-        "authority_level": cand.source_authority or _determine_authority(cand.source_url or ""),
+        "authority_level": _normalize_authority(
+            cand.source_authority,
+            cand.source_url or "",
+        ),
         "status": "待确认" if not cand.signup_deadline else "报名中",
         "organizer": cand.organizer or "",
         "original_text": cand.summary[:500] if cand.summary else "",
@@ -508,3 +510,17 @@ def _determine_authority(url: str) -> str:
         if ed in domain:
             return "高"
     return "中"
+
+
+def _normalize_authority(value: Optional[str], url: str = "") -> str:
+    """Normalize adapter authority values to the database's Chinese enum."""
+    normalized = (value or "").strip().lower()
+    authority_map = {
+        "high": "高",
+        "medium": "中",
+        "low": "低",
+        "高": "高",
+        "中": "中",
+        "低": "低",
+    }
+    return authority_map.get(normalized) or _determine_authority(url)

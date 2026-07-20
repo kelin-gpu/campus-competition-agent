@@ -290,7 +290,12 @@ def get_edition_by_event_id(session: Session, event_id: str) -> Optional[EventEd
 
 def merge_catalog(session: Session, catalog_data: Dict[str, Any]) -> CompetitionCatalog:
     """Merge Ministry or stable catalog data into competition_catalog only."""
-    title = catalog_data.get("title", "")
+    title = (
+        catalog_data.get("title")
+        or catalog_data.get("original_title")
+        or catalog_data.get("normalized_title")
+        or ""
+    )
     catalog_fields = {
         "organizer": catalog_data.get("organizer") or "",
         "category": catalog_data.get("category") or "其他",

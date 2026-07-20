@@ -7,6 +7,7 @@ Covers:
 - Scheduler idempotent start
 """
 
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -19,7 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 def _mock_search_results():
     """Generate mock search result HackathonCandidates."""
-    from tools.hackathon_adapters import HackathonCandidate
+    from tools.hackathon_adapters.base import HackathonCandidate
     return [
         HackathonCandidate(
             title="Test AI Hackathon",
@@ -46,6 +47,54 @@ def _mock_search_results():
             source_authority="high",
         ),
     ]
+
+
+class TestHackathonCandidateContract:
+    def test_platform_adapter_returns_sync_candidate_type(self):
+        from tools.hackathon_adapters.base import HackathonCandidate
+        from tools.hackathon_adapters.devfolio import DevfolioAdapter
+        from tools.hackathon_sync import HackathonCandidate as SyncCandidate
+
+        candidate = DevfolioAdapter().normalize({
+            "title": "Test Devfolio Hackathon",
+            "source_url": "https://devfolio.co/hackathons/test",
+            "status": "open",
+        })
+
+        assert HackathonCandidate is SyncCandidate
+        assert isinstance(candidate, SyncCandidate)
+
+    def test_real_adapter_candidate_supports_cross_source_dedup(self):
+        from tools.hackathon_adapters.base import HackathonCandidate
+        from tools.hackathon_sync import _cross_source_dedup
+
+        candidate = HackathonCandidate(
+            title="Test Hackathon",
+            source_name="MLH",
+            source_url="https://mlh.io/events/test",
+            platform_id="mlh-test",
+        )
+
+        assert _cross_source_dedup([candidate]) == [candidate]
+
+    def test_candidate_conversion_normalizes_authority_without_mutating_tags(self):
+        from tools.hackathon_adapters.base import HackathonCandidate
+        from tools.hackathon_sync import _candidate_to_event
+
+        candidate = HackathonCandidate(
+            title="Test Hackathon",
+            source_name="MLH",
+            source_url="https://mlh.io/events/test",
+            source_authority="high",
+            mode="online",
+            tags=["黑客松"],
+        )
+
+        event = _candidate_to_event(candidate)
+
+        assert event["authority_level"] == "高"
+        assert json.loads(event["tags"]) == ["黑客松", "线上"]
+        assert candidate.tags == ["黑客松"]
 
 
 class TestHackathonSyncDryRun:

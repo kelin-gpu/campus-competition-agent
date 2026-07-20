@@ -200,6 +200,26 @@ def load_ministry_data() -> list:
     return events
 
 
+def _build_ministry_catalog_payload(item: dict) -> dict:
+    """Build the stable catalog payload expected by catalog_service."""
+    info = item.get("_ministry_info", {})
+    title = item.get("title", "")
+    return {
+        "title": title,
+        "original_title": title,
+        "organizer": info.get("organizer", ""),
+        "category": info.get("category", "其他"),
+        "contest_level": info.get("level", "国家级"),
+        "authority_level": "高",
+        "policy_tags": json.dumps(["保研明确相关", "综测加分"], ensure_ascii=False),
+        "scope_type": "校外竞赛",
+        "source_name": "教育部竞赛目录",
+        "source_url": item.get("source_url", ""),
+        "is_ministry_approved": True,
+        "status": "active",
+    }
+
+
 def _cleanup_expired(supabase) -> int:
     """
     删除数据库中报名截止时间已过的过期 event_edition 记录。
@@ -394,21 +414,7 @@ def run_full_sync(ctx=None, skip_enrichment: bool = False) -> dict:
     db_session = get_session()
     try:
         for item in ministry_data:
-            info = item.get("_ministry_info", {})
-            catalog = {
-                "normalized_title": _normalize_title(item["title"]),
-                "original_title": item["title"],
-                "organizer": info.get("organizer", ""),
-                "category": info.get("category", "其他"),
-                "contest_level": info.get("level", "国家级"),
-                "authority_level": "高",
-                "policy_tags": json.dumps(["保研明确相关", "综测加分"], ensure_ascii=False),
-                "scope_type": "校外竞赛",
-                "source_name": "教育部竞赛目录",
-                "source_url": item.get("source_url", ""),
-                "is_ministry_approved": True,
-                "status": "active",
-            }
+            catalog = _build_ministry_catalog_payload(item)
             try:
                 merge_catalog(db_session, catalog)
                 ministry_catalog_count += 1
