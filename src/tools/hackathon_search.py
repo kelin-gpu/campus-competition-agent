@@ -257,6 +257,17 @@ def _make_iso(y: int, m: int, d: int) -> Optional[str]:
         return None
 
 
+def _infer_year_from_context(full_text: str, context: str) -> int:
+    """Try to find a year in the surrounding text. Falls back to current year."""
+    # Look for year in the form '2026', '© 2026', etc.
+    combined = context + " " + full_text[:500]
+    year_matches = re.findall(r'\b(20[2-9]\d)\b', combined)
+    if year_matches:
+        return int(year_matches[0])
+    # Fallback to current year
+    return datetime.now().year
+
+
 def _parse_month_name(name: str) -> Optional[int]:
     return _MONTH_NAMES.get(name.lower().strip())
 
@@ -518,10 +529,12 @@ def filter_event_by_time(
     if deadline_dt is None and event_dt is None and reg_status is None:
         return False, "unverified_skipped"
 
-    # 7. No deadline but event is open and in future → allow
+    # 7. No deadline but event is open → allow (even if already started)
     if deadline_dt is None and reg_status == "open":
         if event_dt is None or event_dt > now:
             return True, "accepted"
+        # Event started but registration still open (ongoing hackathon)
+        return True, "accepted"
 
     # 8. Has valid future deadline → accept
     if deadline_dt is not None and deadline_dt >= now:
@@ -617,4 +630,351 @@ def _extract_tags(text: str) -> str:
         if re.search(pattern, lower):
             tags.append(tag)
     return json.dumps(tags, ensure_ascii=False)
+
+
+# ─── 上下文感知日期解析 (v2) ───
+
+# 报名截止关键词
+_DEADLINE_KEYWORDS = [
+    "registration deadline", "application deadline", "apply by",
+    "registration closes", "deadline", "submission deadline",
+    "报名截止", "截止日期", "截止时间", "注册截止",
+    "applications close", "register by", "sign up by",
+]
+
+# 活动时间关键词
+_EVENT_DATE_KEYWORDS = [
+    "event date", "hackathon date", "event starts", "starts", "begins",
+    "event will be held", "taking place", "scheduled for",
+    "比赛时间", "活动时间", "举办时间", "开始时间",
+    "happening on", "dates:", "when:",
+]
+
+# 范围关键词（可能同时包含开始和截止）
+_RANGE_KEYWORDS = [
+    r"(\w+ \d{1,2})\s*[-–]\s*(\w+ \d{1,2}),?\s*(\d{4})",       # "July 15-17, 2026"
+    r"(\w+ \d{1,2})\s*[-–]\s*(\d{1,2}),?\s*(\d{4})",            # "July 16-18 2026" (month only once)
+    r"(\w+ \d{1,2})\s*to\s*(\w+ \d{1,2}),?\s*(\d{4})",          # "July 15 to 17, 2026"
+    r"(\w+ \d{1,2})\s*[-–]\s*(\w+ \d{1,2})",                    # "Jul 1 - Aug 1" (no year; cross-month)
+    r"(\d{1,2})\s*[-–]\s*(\d{1,2})\s+(\w+)\s+(\d{4})",          # "15-17 July 2026"
+    r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s*[-–]\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})",  # "2026-07-15 - 2026-07-17"
+    r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*[-–到至]\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日",  # "2026年7月15日-17日"
+    r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*[-–到至]\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日",  # "2026年7月15日至8月17日"
+]
+
+# 开放报名关键词 — also check standalone "Register" / "Apply Now" near hackathon context
+_OPEN_REG_KEYWORDS = [
+    "registration open", "applications open", "apply now",
+    "register now", "submit your project", "sign up today",
+    "open for registration", "now accepting",
+    "报名中", "开放报名", "正在报名", "火热报名",
+    "opens on", "registration starts", "applications open on",
+    # Button/link text patterns (checked only when hackathon-related content exists)
+    ">Register<", ">Apply Now<", ">Apply<", ">Register Now<",
+    ">Sign Up<", ">Join Now<",
+]
+
+# 关闭关键词
+_CLOSED_REG_KEYWORDS = [
+    "registration closed", "applications closed", "registration has ended",
+    "submissions closed", "no longer accepting",
+    "报名已截止", "报名结束", "已截止", "报名关闭",
+    "event has ended", "event ended", "past event",
+]
+
+
+def parse_dates_contextual(text: str) -> dict:
+    """Context-aware date extraction for hackathon pages.
+
+    Uses keyword proximity to determine if a date is:
+    - signup_deadline
+    - event_start
+    - event_end
+    - registration_open_time
+
+    Returns dict with these keys.
+    """
+    result = {
+        "signup_deadline": None,
+        "event_start": None,
+        "event_end": None,
+        "registration_open_time": None,
+        "raw_date_contexts": [],
+    }
+
+    text_lower = text.lower()
+
+    # Score each date by proximity to deadline/event keywords
+    scored_dates = []
+
+    # Find all date-like strings with surrounding context
+    date_patterns = [
+        (re.compile(r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})'), "iso_num"),
+        (re.compile(r'([A-Z][a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})'), "month_name"),
+        (re.compile(r'(\d{1,2})\s+([A-Z][a-z]+)\s+(\d{4})'), "day_month"),
+        (re.compile(r'(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日'), "cn_date"),
+    ]
+
+    for pat, ptype in date_patterns:
+        for m in pat.finditer(text):
+            start = m.start()
+            context = text[max(0, start - 100):start + len(m.group(0)) + 100]
+            context_lower = context.lower()
+
+            if ptype == "iso_num":
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            elif ptype == "month_name":
+                mo = _MONTH_NAMES.get(m.group(1).lower())
+                if mo is None:
+                    continue
+                d, y = int(m.group(2)), int(m.group(3))
+            elif ptype == "day_month":
+                mo = _MONTH_NAMES.get(m.group(2).lower())
+                if mo is None:
+                    continue
+                d, y = int(m.group(1)), int(m.group(3))
+            elif ptype == "cn_date":
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            else:
+                continue
+
+            date_str = _make_iso(y, mo, d)
+            if date_str is None:
+                continue
+
+            # Score by keyword proximity
+            dl_score = sum(1 for kw in _DEADLINE_KEYWORDS if kw in context_lower)
+            ev_score = sum(1 for kw in _EVENT_DATE_KEYWORDS if kw in context_lower)
+            op_score = sum(1 for kw in _OPEN_REG_KEYWORDS if kw in context_lower)
+            cl_score = sum(1 for kw in _CLOSED_REG_KEYWORDS if kw in context_lower)
+
+            scored_dates.append({
+                "date": date_str,
+                "deadline_score": dl_score,
+                "event_score": ev_score,
+                "open_score": op_score,
+                "closed_score": cl_score,
+                "context": context[:200],
+            })
+
+    if not scored_dates:
+        return result
+
+    # Assign dates based on highest scores
+    for sd in sorted(scored_dates, key=lambda x: x["deadline_score"], reverse=True):
+        if result["signup_deadline"] is None and sd["deadline_score"] > 0:
+            result["signup_deadline"] = sd["date"]
+            result["raw_date_contexts"].append(("signup_deadline", sd["date"], sd["context"]))
+
+    for sd in sorted(scored_dates, key=lambda x: x["event_score"], reverse=True):
+        if sd["date"] != result["signup_deadline"]:
+            if result["event_start"] is None and sd["event_score"] > 0:
+                result["event_start"] = sd["date"]
+                result["raw_date_contexts"].append(("event_start", sd["date"], sd["context"]))
+                break
+
+    for sd in sorted(scored_dates, key=lambda x: x["open_score"], reverse=True):
+        if sd["date"] != result["signup_deadline"] and sd["date"] != result["event_start"]:
+            if result["registration_open_time"] is None and sd["open_score"] > 0:
+                result["registration_open_time"] = sd["date"]
+                break
+
+    return result
+
+
+def parse_date_ranges(text: str) -> dict:
+    """Parse date range patterns (e.g. 'July 15-17, 2026', '2026年7月15日至17日').
+
+    For ranges near deadline keywords → end date is signup_deadline.
+    For ranges near event keywords → start/end are event_start/event_end.
+    """
+    result = {"signup_deadline": None, "event_start": None, "event_end": None}
+
+    for pat_str in _RANGE_KEYWORDS:
+        pattern = re.compile(pat_str, re.IGNORECASE)
+        for m in pattern.finditer(text):
+            # Get context
+            start = m.start()
+            context = text[max(0, start - 100):start + len(m.group(0)) + 100].lower()
+
+            # Determine if this is a deadline range or event range
+            is_deadline = any(kw in context for kw in _DEADLINE_KEYWORDS)
+            is_event = any(kw in context for kw in _EVENT_DATE_KEYWORDS) or not is_deadline
+
+            # Extract dates based on pattern
+            try:
+                groups = m.groups()
+                if len(groups) == 2:
+                    # Cross-month: "Jul 1 - Aug 1" (no year)
+                    # groups[0] = "Jul 1", groups[1] = "Aug 1"
+                    mo1_str = groups[0].lower().split()[0] if ' ' in groups[0].lower() else groups[0].lower()
+                    mo2_str = groups[1].lower().split()[0] if ' ' in groups[1].lower() else groups[1].lower()
+                    mo1 = _MONTH_NAMES.get(mo1_str)
+                    mo2 = _MONTH_NAMES.get(mo2_str)
+                    if mo1 is None or mo2 is None:
+                        continue
+                    d1 = int(re.search(r'\d+', groups[0]).group())
+                    d2 = int(re.search(r'\d+', groups[1]).group())
+                    # Infer year from page context or current year
+                    y = _infer_year_from_context(text, context)
+                    date1 = _make_iso(y, mo1, d1)
+                    date2 = _make_iso(y, mo2, d2)
+                elif len(groups) == 3:
+                    # "July 15-17, 2026" or "July 15 to 17, 2026"
+                    mo = _MONTH_NAMES.get(groups[0].lower().split()[0] if ' ' in groups[0] else groups[0].lower())
+                    if mo is None:
+                        continue
+                    d1 = int(re.search(r'\d+', groups[0]).group())
+                    d2 = int(re.search(r'\d+', groups[1]).group())
+                    y = int(groups[2])
+                    date1 = _make_iso(y, mo, d1)
+                    date2 = _make_iso(y, mo, d2)
+                elif len(groups) == 4:
+                    # "15-17 July 2026"
+                    d1, d2 = int(groups[0]), int(groups[1])
+                    mo = _MONTH_NAMES.get(groups[2].lower())
+                    if mo is None:
+                        continue
+                    y = int(groups[3])
+                    date1 = _make_iso(y, mo, d1)
+                    date2 = _make_iso(y, mo, d2)
+                elif len(groups) == 6:
+                    # "2026-07-15 - 2026-07-17" or Chinese format
+                    y1, mo1, d1 = int(groups[0]), int(groups[1]), int(groups[2])
+                    y2, mo2, d2 = int(groups[3]), int(groups[4]), int(groups[5])
+                    date1 = _make_iso(y1, mo1, d1)
+                    date2 = _make_iso(y2, mo2, d2)
+                elif len(groups) == 5:
+                    # "2026年7月15日至8月17日" (same year, diff month)
+                    y = int(groups[0])
+                    mo1, d1 = int(groups[1]), int(groups[2])
+                    mo2, d2 = int(groups[3]), int(groups[4])
+                    date1 = _make_iso(y, mo1, d1)
+                    date2 = _make_iso(y, mo2, d2)
+                else:
+                    continue
+
+                if is_deadline and result["signup_deadline"] is None:
+                    result["signup_deadline"] = date2  # end of range = deadline
+                if is_event:
+                    if result["event_start"] is None:
+                        result["event_start"] = date1
+                    if result["event_end"] is None:
+                        result["event_end"] = date2
+
+            except (ValueError, AttributeError, IndexError):
+                continue
+
+    return result
+
+
+def detect_registration_status_v2(text: str) -> Optional[str]:
+    """Enhanced registration status detection.
+
+    Returns: 'open', 'upcoming', 'closed', or None.
+
+    Prioritizes card-level detection over page-level.
+    """
+    excerpt = text[:4000].lower()
+
+    # Closed patterns (check first since they're definitive)
+    if any(re.search(p, excerpt, re.IGNORECASE) for p in [
+        r"registration\s+(is\s+)?(?:closed|has\s+ended|ended)",
+        r"applications?\s+(?:are\s+)?closed",
+        r"submissions?\s+(?:are\s+)?closed",
+        r"报名\s*(?:已|已经)?\s*(?:结束|关闭|截止)",
+    ]):
+        return "closed"
+
+    # Upcoming patterns (not yet open)
+    if any(re.search(p, excerpt, re.IGNORECASE) for p in [
+        r"registration\s+(?:opens|starts|begins)\s+on",
+        r"applications?\s+(?:open|start)\s+on",
+        r"即将.*报名|报名.*即将.*开放",
+        r"coming\s+soon",
+    ]):
+        return "upcoming"
+
+    # Open patterns
+    if any(re.search(p, excerpt, re.IGNORECASE) for p in [
+        r"registration\s+(?:is\s+)?(?:open|now\s+open)",
+        r"报名\s*(?:正在|火热|开放|进行)",
+        r"applications?\s+(?:are\s+)?(?:open|now\s+open)",
+        r"apply\s+now",
+        r"register\s+now",
+        r"submit\s+your\s+project",
+        r"sign\s+up\s+today",
+        r"open\s+for\s+(?:registration|applications|submissions)",
+        r"now\s+accepting\s+(?:applications|submissions|registrations)",
+    ]):
+        return "open"
+
+    # Weak fallback: standalone "Register" or "Apply" button text
+    # Only after hackathon confirmed, closed checked, and other patterns failed
+    if re.search(r'\bregister\b', excerpt, re.IGNORECASE) or re.search(r'\bapply\b', excerpt, re.IGNORECASE):
+        return "open"
+
+    return None
+
+
+def is_listing_page(html: str, url: str) -> bool:
+    """Detect if a page is a listing/aggregator page (not a single hackathon detail).
+
+    Returns True if it's a listing page.
+    """
+    text = re.sub(r'<[^>]+>', ' ', html[:10000])
+    text = re.sub(r'\s+', ' ', text).lower()
+
+    listing_signals = [
+        r"(?:upcoming|open|featured|past|all)\s+hackathons?",
+        r"hackathons?\s+(?:near|in|for|this|upcoming)",
+        r"find\s+(?:a\s+)?hackathon",
+        r"browse\s+hackathons?",
+        r"discover\s+hackathons?",
+        r"explore\s+hackathons?",
+        r"黑客松\s*(?:列表|大全|汇总|推荐)",
+        r"\d+\+?\s*(?:upcoming\s+)?hackathons?",
+        r"list\s+of\s+hackathons?",
+        r"top\s+\d+\s+hackathons?",
+    ]
+
+    # URL signals
+    url_lower = url.lower()
+    url_signals = [
+        "/hackathons" in url_lower and not re.search(r'/hackathons/[^/]+/.', url_lower),
+        "/events" in url_lower,
+        "/search" in url_lower,
+        "/explore" in url_lower,
+        "/browse" in url_lower,
+    ]
+
+    text_signals = sum(1 for s in listing_signals if re.search(s, text))
+    url_signals_count = sum(1 for s in url_signals if s)
+
+    return text_signals >= 2 or url_signals_count >= 1
+
+
+# ─── 限流器 ───
+from collections import defaultdict
+from threading import Lock
+
+
+class DomainRateLimiter:
+    """Per-domain rate limiter for concurrent fetching."""
+
+    def __init__(self, default_delay: float = 1.0):
+        self._last_request: Dict[str, float] = defaultdict(float)
+        self._lock = Lock()
+        self._default_delay = default_delay
+
+    def wait(self, url: str, delay: Optional[float] = None) -> None:
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.lower()
+        d = delay or self._default_delay
+        with self._lock:
+            now = time.time()
+            elapsed = now - self._last_request.get(domain, 0)
+            if elapsed < d:
+                time.sleep(d - elapsed)
+            self._last_request[domain] = time.time()
 
