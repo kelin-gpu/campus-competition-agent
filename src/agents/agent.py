@@ -23,6 +23,10 @@ from tools.user_profile import (
     remove_focus_contest,
     get_personalized_recommendations,
 )
+from tools.ministry_catalog_validator import (
+    validate_ministry_catalog,
+    apply_ministry_catalog_updates,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +94,9 @@ def build_agent(ctx=None):
         add_focus_contest,
         remove_focus_contest,
         get_personalized_recommendations,
+        # 教育部竞赛目录校验
+        validate_ministry_catalog,
+        apply_ministry_catalog_updates,
     ]
 
     agent = create_agent(

@@ -347,7 +347,7 @@ def run_hackathon_sync(
         cand.signup_deadline = signup_deadline
         cand.event_start = event_start
         cand.event_end = event_end
-        cand.registration_status = reg_status
+        cand.registration_status = reg_status or ""
         cand.extraction_method = "contextual_date_parse"
 
         if not (cand.title or "").strip():

@@ -3,6 +3,7 @@
 - 每天凌晨2点执行全量同步（教育部+赛氪+微信公众号）
 - 每6小时执行一次微信公众号增量同步
 - 每12小时执行一次黑客松专项同步（可配置）
+- 每月1日凌晨3点执行教育部竞赛目录校验
 - 支持手动触发增量同步
 - 可扩展新数据源
 """
@@ -68,6 +69,21 @@ def _scheduled_hackathon_sync_job():
         logger.info(f"Scheduled hackathon sync completed: {stats}")
     except Exception as e:
         logger.error(f"Scheduled hackathon sync failed: {e}", exc_info=True)
+
+
+def _scheduled_ministry_validation_job():
+    """定时任务：每月1日凌晨3点校验教育部竞赛目录"""
+    logger.info("=== Scheduled ministry catalog validation started at {} ===".format(datetime.now().isoformat()))
+    try:
+        from tools.ministry_catalog_validator import validate_ministry_catalog
+        from coze_coding_utils.runtime_ctx.context import new_context
+
+        ctx = new_context(method="scheduled_ministry_validation")
+        # 注意：validate_ministry_catalog 是 @tool 装饰的函数，使用 .invoke() 调用
+        report = validate_ministry_catalog.invoke({})
+        logger.info(f"Ministry catalog validation completed:\n{report}")
+    except Exception as e:
+        logger.error(f"Scheduled ministry catalog validation failed: {e}", exc_info=True)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -140,10 +156,21 @@ def start_scheduler(force_restart: bool = False):
             misfire_grace_time=max(1800, hackathon_interval * 300),
         )
 
+        # 每月1日凌晨3点校验教育部竞赛目录
+        _scheduler.add_job(
+            _scheduled_ministry_validation_job,
+            trigger=CronTrigger(day=1, hour=3, minute=0, timezone="Asia/Shanghai"),
+            id="monthly_ministry_validation",
+            name="教育部竞赛目录月度校验",
+            replace_existing=True,
+            misfire_grace_time=7200,
+        )
+
         _scheduler.start()
         logger.info(
             f"Scheduler started: daily_full_sync@02:00, wechat_sync@every 6h, "
-            f"hackathon_sync@every {hackathon_interval}h"
+            f"hackathon_sync@every {hackathon_interval}h, "
+            f"ministry_validation@monthly 1st 03:00"
         )
 
         # 验证启动

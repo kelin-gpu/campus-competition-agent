@@ -303,7 +303,7 @@ def merge_event(
     }
 
     edition, created = upsert_edition(session, catalog, event_id, title, **edition_fields)
-    edition._merge_created = created
+    object.__setattr__(edition, "_merge_created", created)
 
     # Record evidence for each non-empty field
     evidence_fields = [

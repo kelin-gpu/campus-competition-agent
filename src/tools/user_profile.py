@@ -296,9 +296,9 @@ def get_personalized_recommendations(limit: int = 10) -> str:
         # 从 signup_deadline 实时计算 DDL；days_remaining 不是数据库字段。
         scored_events = []
         for event in events:
+            event = dict(event)  # type: ignore[arg-type]
             if is_deadline_expired(event.get("signup_deadline")):
                 continue
-            event = dict(event)
             event["days_remaining"] = calculate_days_remaining(
                 event.get("signup_deadline")
             )
