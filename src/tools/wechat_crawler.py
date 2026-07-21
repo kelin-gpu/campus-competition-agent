@@ -17,14 +17,28 @@ import json
 import time
 import logging
 import hashlib
-from datetime import datetime, timedelta
+import html
+import random
+import tempfile
+import threading
+import unicodedata
+from datetime import datetime, timedelta, timezone
 from typing import Optional
-from urllib.parse import quote, urljoin
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
+
+
+def _env_int(name: str, default: int, minimum: int = 0) -> int:
+    try:
+        return max(minimum, int(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s=%r; using %s", name, os.getenv(name), default)
+        return default
 
 # ============================================================
 # 配置
@@ -98,6 +112,10 @@ WECHAT_ACCOUNTS = CORE_ACCOUNTS
 # 动态发现的公众号缓存文件路径
 CACHE_DIR = os.path.join(os.getenv("COZE_WORKSPACE_PATH", "/workspace/projects"), "assets", "cache")
 ACCOUNTS_CACHE_FILE = os.path.join(CACHE_DIR, "wechat_accounts_cache.json")
+STATE_FILE = os.getenv(
+    "WECHAT_STATE_FILE",
+    os.path.join(CACHE_DIR, "wechat_crawl_state.json"),
+)
 
 # 缓存有效期（天）
 CACHE_TTL_DAYS = 7
@@ -113,6 +131,16 @@ REQUEST_TIMEOUT = 15
 
 # 最大重试次数
 MAX_RETRIES = 3
+
+INCREMENTAL_OVERLAP_HOURS = _env_int("WECHAT_INCREMENTAL_OVERLAP_HOURS", 24)
+SEARCH_MAX_PAGES = _env_int("WECHAT_SEARCH_MAX_PAGES", 1, minimum=1)
+FULL_SEARCH_MAX_PAGES = 3
+STATE_VERSION = 1
+PROCESSED_TTL_DAYS = 90
+FAILURE_TTL_DAYS = 14
+MAX_PROCESSED = 5000
+MAX_FAILURES = 500
+SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 # 内容过滤关键词（标题或正文包含任一即保留）
 RELEVANCE_KEYWORDS = [
@@ -137,12 +165,14 @@ SOGOU_WEIXIN_URL = "https://weixin.sogou.com/weixin"
 
 # 请求 session（复用连接）
 _session = None
-_ua_index = 0
+_request_lock = threading.Lock()
+_state_lock = threading.RLock()
+_last_request_at = 0.0
 
 
 def _get_session() -> requests.Session:
     """获取或创建 HTTP session"""
-    global _session, _ua_index
+    global _session
     if _session is None:
         _session = requests.Session()
         _session.headers.update({
@@ -150,10 +180,26 @@ def _get_session() -> requests.Session:
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
+            "User-Agent": random.choice(USER_AGENTS),
         })
-    _ua_index = (_ua_index + 1) % len(USER_AGENTS)
-    _session.headers["User-Agent"] = USER_AGENTS[_ua_index]
     return _session
+
+
+def _rate_limit():
+    """Apply one process-wide polite request interval."""
+    global _last_request_at
+    with _request_lock:
+        elapsed = time.monotonic() - _last_request_at
+        if elapsed < REQUEST_INTERVAL:
+            time.sleep(REQUEST_INTERVAL - elapsed)
+        _last_request_at = time.monotonic()
+
+
+def _looks_blocked(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(marker in lowered for marker in (
+        "antispider", "请输入验证码", "访问过于频繁", "异常访问", "verifycode",
+    ))
 
 
 def _request_with_retry(url: str, params: dict = None, max_retries: int = MAX_RETRIES) -> Optional[requests.Response]:
@@ -161,21 +207,185 @@ def _request_with_retry(url: str, params: dict = None, max_retries: int = MAX_RE
     session = _get_session()
     for attempt in range(max_retries):
         try:
-            resp = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            _rate_limit()
+            resp = session.get(url, params=params, timeout=(5, REQUEST_TIMEOUT))
+            if resp.status_code == 429 or 500 <= resp.status_code < 600:
+                retry_after = resp.headers.get("Retry-After", "")
+                try:
+                    delay = float(retry_after)
+                except (TypeError, ValueError):
+                    delay = REQUEST_INTERVAL * (2 ** attempt) + random.uniform(0, 1)
+                if attempt < max_retries - 1:
+                    time.sleep(delay)
+                    continue
             resp.raise_for_status()
+            if _looks_blocked(resp.text):
+                raise requests.RequestException("soft block or captcha page")
             return resp
         except requests.RequestException as e:
             logger.warning(f"Request failed (attempt {attempt+1}/{max_retries}): {url} -> {e}")
             if attempt < max_retries - 1:
-                wait_time = REQUEST_INTERVAL * (attempt + 1)
+                wait_time = REQUEST_INTERVAL * (2 ** attempt) + random.uniform(0, 1)
                 time.sleep(wait_time)
     logger.error(f"All {max_retries} attempts failed for: {url}")
     return None
 
 
+def _empty_state() -> dict:
+    return {
+        "version": STATE_VERSION,
+        "updated_at": None,
+        "accounts": {},
+        "processed": {},
+        "failures": [],
+    }
+
+
+def _parse_iso(value: str) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=SHANGHAI_TZ)
+        return parsed.astimezone(SHANGHAI_TZ)
+    except (TypeError, ValueError):
+        return None
+
+
+def _prune_state(state: dict, now: Optional[datetime] = None) -> dict:
+    now = (now or datetime.now(SHANGHAI_TZ)).astimezone(SHANGHAI_TZ)
+    processed_cutoff = now - timedelta(days=PROCESSED_TTL_DAYS)
+    failure_cutoff = now - timedelta(days=FAILURE_TTL_DAYS)
+
+    processed = []
+    for key, value in (state.get("processed") or {}).items():
+        processed_at = _parse_iso(value)
+        if processed_at and processed_at >= processed_cutoff:
+            processed.append((key, processed_at.isoformat()))
+    processed.sort(key=lambda item: item[1], reverse=True)
+    state["processed"] = dict(processed[:MAX_PROCESSED])
+
+    failures = []
+    for item in state.get("failures") or []:
+        seen_at = _parse_iso(item.get("last_seen_at", ""))
+        if seen_at and seen_at >= failure_cutoff:
+            failures.append(item)
+    failures.sort(key=lambda item: item.get("last_seen_at", ""), reverse=True)
+    state["failures"] = failures[:MAX_FAILURES]
+    return state
+
+
+def _load_crawl_state() -> dict:
+    with _state_lock:
+        if not os.path.exists(STATE_FILE):
+            return _empty_state()
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as handle:
+                state = json.load(handle)
+            if state.get("version") != STATE_VERSION:
+                logger.warning("Unsupported WeChat crawl state version; starting clean")
+                return _empty_state()
+            return _prune_state(state)
+        except Exception as exc:
+            logger.warning("Failed to load WeChat crawl state: %s", exc)
+            return _empty_state()
+
+
+def _save_crawl_state(state: dict):
+    with _state_lock:
+        state = _prune_state(state)
+        state["version"] = STATE_VERSION
+        state["updated_at"] = datetime.now(SHANGHAI_TZ).isoformat()
+        directory = os.path.dirname(STATE_FILE) or "."
+        os.makedirs(directory, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(prefix="wechat-state-", suffix=".json", dir=directory)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(state, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, STATE_FILE)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+
+def _upsert_failure(state: dict, item: dict, stage: str, reason: str):
+    key = item.get("source_article_id") or item.get("url") or item.get("title") or reason
+    now = datetime.now(SHANGHAI_TZ).isoformat()
+    existing = next((entry for entry in state["failures"] if entry.get("key") == key and entry.get("stage") == stage), None)
+    payload = {
+        "key": key,
+        "target_account": item.get("target_account", ""),
+        "source_name": item.get("source_name", ""),
+        "title": item.get("title", ""),
+        "url": item.get("url", ""),
+        "stage": stage,
+        "reason": reason,
+        "attempts": 1,
+        "first_seen_at": now,
+        "last_seen_at": now,
+    }
+    if existing:
+        payload["attempts"] = int(existing.get("attempts", 0)) + 1
+        payload["first_seen_at"] = existing.get("first_seen_at", now)
+        state["failures"].remove(existing)
+    state["failures"].append(payload)
+
+
+def _record_failure(item: dict, stage: str, reason: str):
+    with _state_lock:
+        state = _load_crawl_state()
+        _upsert_failure(state, item, stage, reason)
+        _save_crawl_state(state)
+
+
+def mark_wechat_articles_processed(items: list):
+    """Acknowledge terminally handled articles and advance per-account cursors."""
+    if not items:
+        return
+    with _state_lock:
+        state = _load_crawl_state()
+        now = datetime.now(SHANGHAI_TZ).isoformat()
+        acknowledged = set()
+        for item in items:
+            article_id = item.get("source_article_id") or item.get("_wechat_id")
+            if not article_id:
+                continue
+            acknowledged.add(article_id)
+            state["processed"][article_id] = now
+            candidate_id = item.get("candidate_article_id")
+            if candidate_id:
+                acknowledged.add(candidate_id)
+                state["processed"][candidate_id] = now
+            account = _normalize_account_name(item.get("target_account") or item.get("source_name", ""))
+            published = _parse_iso(item.get("publish_time", ""))
+            if account:
+                current = state["accounts"].setdefault(account, {})
+                current["last_success_at"] = now
+                if published:
+                    old = _parse_iso(current.get("last_publish_time", ""))
+                    if old is None or published > old:
+                        current["last_publish_time"] = published.isoformat()
+        if acknowledged:
+            state["failures"] = [entry for entry in state["failures"] if entry.get("key") not in acknowledged]
+            _save_crawl_state(state)
+
+
 # ============================================================
 # 公众号动态发现 + 缓存机制
 # ============================================================
+
+def _normalize_account_name(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value or "").strip().lower()
+    return re.sub(r"[\s·•_\-—（）()]+", "", value)
+
+
+def _account_matches(actual: str, account: dict) -> bool:
+    actual_norm = _normalize_account_name(actual)
+    allowed = [account.get("name", ""), *(account.get("aliases") or [])]
+    return bool(actual_norm) and actual_norm in {_normalize_account_name(name) for name in allowed if name}
 
 def _load_accounts_cache() -> Optional[dict]:
     """加载公众号列表缓存"""
@@ -348,6 +558,44 @@ def get_all_accounts(force_refresh: bool = False) -> list:
 # 搜狗微信搜索 - 获取文章列表
 # ============================================================
 
+def _timestamp_to_iso(timestamp: str) -> str:
+    try:
+        return datetime.fromtimestamp(int(timestamp), tz=timezone.utc).astimezone(SHANGHAI_TZ).isoformat()
+    except (TypeError, ValueError, OSError):
+        return ""
+
+
+def _parse_sogou_article_results(html_text: str, account_name: str) -> list:
+    soup = BeautifulSoup(html_text, "lxml")
+    articles = []
+    for item in soup.select("ul.news-list > li"):
+        title_tag = item.select_one("h3 a")
+        if not title_tag:
+            continue
+        title = title_tag.get_text("", strip=True)
+        url = str(title_tag.get("href", ""))
+        if url and not url.startswith("http"):
+            url = urljoin("https://weixin.sogou.com", url)
+        summary_tag = item.select_one("p.txt-info")
+        publisher_tag = item.select_one("span.all-time-y2")
+        time_tag = item.select_one("span.s2")
+        time_text = time_tag.get_text(" ", strip=True) if time_tag else ""
+        time_script = time_tag.find("script") if time_tag else None
+        script_text = time_script.get_text(" ", strip=True) if time_script else ""
+        match = re.search(r"timeConvert\(['\"]?(\d+)['\"]?\)", script_text)
+        publish_time = _timestamp_to_iso(match.group(1)) if match else time_text
+        articles.append({
+            "title": title,
+            "url": url,
+            "sogou_url": url,
+            "summary": summary_tag.get_text(" ", strip=True) if summary_tag else "",
+            "publish_time": publish_time,
+            "source_name": publisher_tag.get_text(" ", strip=True) if publisher_tag else "",
+            "target_account": account_name,
+        })
+    return articles
+
+
 def search_wechat_articles(account_name: str, page: int = 1) -> list:
     """
     通过搜狗微信搜索获取指定公众号的文章列表
@@ -371,37 +619,7 @@ def search_wechat_articles(account_name: str, page: int = 1) -> list:
         return []
 
     try:
-        soup = BeautifulSoup(resp.text, "lxml")
-        articles = []
-
-        # 搜狗微信搜索结果解析
-        for item in soup.select("ul.news-list > li"):
-            title_tag = item.select_one("h3 a")
-            if not title_tag:
-                continue
-
-            title = title_tag.get_text(strip=True)
-            url = str(title_tag.get("href", ""))
-            if url and not url.startswith("http"):
-                url = urljoin("https://weixin.sogou.com", url)
-
-            summary_tag = item.select_one("p.txt-info")
-            summary = summary_tag.get_text(strip=True) if summary_tag else ""
-
-            time_tag = item.select_one("span.s2")
-            publish_time = time_tag.get_text(strip=True) if time_tag else ""
-
-            account_tag = item.select_one("div.s-p a[data-z]")
-            source_name = account_tag.get_text(strip=True) if account_tag else account_name
-
-            articles.append({
-                "title": title,
-                "url": url,
-                "summary": summary,
-                "publish_time": publish_time,
-                "source_name": source_name,
-            })
-
+        articles = _parse_sogou_article_results(resp.text, account_name)
         logger.info(f"Found {len(articles)} articles for '{account_name}' (page {page})")
         return articles
 
@@ -410,22 +628,117 @@ def search_wechat_articles(account_name: str, page: int = 1) -> list:
         return []
 
 
-def search_all_accounts(page: int = 1) -> list:
-    """搜索所有目标公众号的文章（核心 + 动态发现）"""
+def search_all_accounts(page: int = 1, max_pages: Optional[int] = None) -> list:
+    """搜索所有目标公众号的文章（核心 + 动态发现）。"""
     all_accounts = get_all_accounts()
     all_articles = []
+    max_pages = max_pages or page
     for i, account in enumerate(all_accounts):
-        if i > 0:
-            time.sleep(REQUEST_INTERVAL)
-        articles = search_wechat_articles(account["name"], page=page)
-        all_articles.extend(articles)
-        logger.info(f"[{i+1}/{len(all_accounts)}] {account['name']}: {len(articles)} articles")
+        count = 0
+        for page_number in range(page, max_pages + 1):
+            articles = search_wechat_articles(account["name"], page=page_number)
+            for article in articles:
+                article["target_account"] = account["name"]
+                article["target_aliases"] = account.get("aliases", [])
+            all_articles.extend(articles)
+            count += len(articles)
+            if not articles:
+                break
+        logger.info(f"[{i+1}/{len(all_accounts)}] {account['name']}: {count} articles")
     return all_articles
 
 
 # ============================================================
 # 微信文章页解析 - 提取正文
 # ============================================================
+
+def _is_wechat_article_url(url: str) -> bool:
+    parsed = urlparse(url or "")
+    return parsed.scheme == "https" and (parsed.hostname or "").lower() == "mp.weixin.qq.com"
+
+
+def _decode_js_string(value: str) -> str:
+    try:
+        return bytes(value, "utf-8").decode("unicode_escape") if "\\" in value else value
+    except UnicodeDecodeError:
+        return value
+
+
+def _resolve_sogou_redirect_html(html_text: str) -> Optional[str]:
+    """Resolve Sogou's string-fragment trampoline without executing JavaScript."""
+    fragments = re.findall(r"url\s*\+=\s*(['\"])(.*?)\1\s*;", html_text or "", flags=re.DOTALL)
+    if not fragments:
+        return None
+    resolved = "".join(_decode_js_string(value) for _, value in fragments)
+    # Do not use html.unescape here: it treats the valid URL prefix
+    # ``&timestamp`` as the legacy entity ``&times`` and corrupts the URL.
+    resolved = (
+        resolved.replace("&amp;", "&")
+        .replace("&#38;", "&")
+        .replace("&#x26;", "&")
+        .replace("&#X26;", "&")
+        .replace("@", "")
+    )
+    return resolved if _is_wechat_article_url(resolved) else None
+
+
+def _extract_script_value(text: str, names: tuple[str, ...]) -> str:
+    for name in names:
+        patterns = (
+            rf"(?:var\s+)?{re.escape(name)}\s*=\s*['\"]([^'\"]+)['\"]",
+            rf"['\"]{re.escape(name)}['\"]\s*:\s*['\"]([^'\"]+)['\"]",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, text or "")
+            if match:
+                return html.unescape(match.group(1))
+    return ""
+
+
+def _extract_identifier(text: str, names: tuple[str, ...], pattern: str) -> str:
+    """Return the first script value that satisfies an identifier grammar."""
+    for name in names:
+        expressions = (
+            rf"(?:var\s+)?{re.escape(name)}\s*=\s*['\"]([^'\"]+)['\"]",
+            rf"['\"]{re.escape(name)}['\"]\s*:\s*['\"]([^'\"]+)['\"]",
+        )
+        for expression in expressions:
+            for value in re.findall(expression, text or ""):
+                value = html.unescape(value).strip()
+                if re.fullmatch(pattern, value):
+                    return value
+    return ""
+
+
+def _canonicalize_wechat_url(url: str, identifiers: Optional[dict] = None) -> str:
+    if not _is_wechat_article_url(url):
+        return ""
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    identifiers = identifiers or {}
+    biz = identifiers.get("biz") or (query.get("__biz") or [""])[0]
+    mid = identifiers.get("mid") or (query.get("mid") or [""])[0]
+    idx = identifiers.get("idx") or (query.get("idx") or [""])[0]
+    sn = identifiers.get("sn") or (query.get("sn") or [""])[0]
+    stable = {key: value for key, value in (("__biz", biz), ("mid", mid), ("idx", idx), ("sn", sn)) if value}
+    if stable:
+        return urlunparse(("https", "mp.weixin.qq.com", "/s", "", urlencode(stable), ""))
+    return urlunparse(("https", "mp.weixin.qq.com", parsed.path or "/s", "", parsed.query, ""))
+
+
+def _build_article_key(publisher: str, publish_time: str, title: str, identifiers: Optional[dict] = None) -> str:
+    identifiers = identifiers or {}
+    if identifiers.get("biz") and identifiers.get("mid") and identifiers.get("idx"):
+        identity = f"{identifiers['biz']}:{identifiers['mid']}:{identifiers['idx']}"
+    else:
+        parsed_time = _parse_iso(publish_time)
+        identity = "|".join((
+            _normalize_account_name(publisher),
+            parsed_time.isoformat() if parsed_time else str(publish_time or ""),
+            unicodedata.normalize("NFKC", title or "").strip().lower(),
+        ))
+    return "WX-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24].upper()
+
 
 def fetch_wechat_article(url: str) -> Optional[dict]:
     """
@@ -444,26 +757,34 @@ def fetch_wechat_article(url: str) -> Optional[dict]:
     if resp is None:
         return None
 
+    resolved_url = resp.url
+    if not _is_wechat_article_url(resolved_url):
+        resolved_url = _resolve_sogou_redirect_html(resp.text) or ""
+        if not resolved_url:
+            logger.warning("Unable to resolve safe WeChat redirect: %s", url)
+            return None
+        resp = _request_with_retry(resolved_url)
+        if resp is None:
+            return None
+
     try:
         soup = BeautifulSoup(resp.text, "lxml")
 
         # 提取标题
         title_tag = soup.select_one("h1#activity-name") or soup.select_one("h1.rich_media_title")
-        title = title_tag.get_text(strip=True) if title_tag else ""
+        title_meta = soup.select_one('meta[property="og:title"]')
+        title = title_tag.get_text(strip=True) if title_tag else str(title_meta.get("content", "")).strip() if title_meta else ""
 
         # 提取作者/公众号
         author_tag = soup.select_one("a#js_name") or soup.select_one("span.rich_media_meta_nickname")
-        author = author_tag.get_text(strip=True) if author_tag else ""
+        author = author_tag.get_text(strip=True) if author_tag else _extract_script_value(resp.text, ("nickname", "nick_name"))
 
         # 提取发布时间
         publish_time = ""
         # 微信文章页的发布时间通常在 script 中
-        time_script = soup.find(string=re.compile(r'var\s+ct\s*=\s*"(\d+)"'))
-        if time_script:
-            match = re.search(r'var\s+ct\s*=\s*"(\d+)"', time_script)
-            if match:
-                timestamp = int(match.group(1))
-                publish_time = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = _extract_identifier(resp.text, ("ct", "publish_time"), r"\d{9,12}")
+        if timestamp:
+            publish_time = _timestamp_to_iso(timestamp)
 
         # 提取正文
         content_tag = soup.select_one("div#js_content") or soup.select_one("div.rich_media_content")
@@ -483,11 +804,28 @@ def fetch_wechat_article(url: str) -> Optional[dict]:
         if not title and not detail_text:
             return None
 
+        identifiers = {
+            "biz": _extract_identifier(resp.text, ("biz", "__biz"), r"[A-Za-z0-9_=-]{6,}"),
+            "mid": _extract_identifier(resp.text, ("mid", "appmsgid"), r"\d+"),
+            "idx": _extract_identifier(resp.text, ("idx", "itemidx"), r"\d+"),
+            "sn": _extract_identifier(resp.text, ("sn",), r"[A-Fa-f0-9]{16,64}"),
+        }
+        query = parse_qs(urlparse(resp.url).query)
+        for key, query_key in (("biz", "__biz"), ("mid", "mid"), ("idx", "idx"), ("sn", "sn")):
+            if not identifiers[key]:
+                identifiers[key] = (query.get(query_key) or [""])[0]
+        canonical_url = _canonicalize_wechat_url(resp.url, identifiers)
+        source_article_id = _build_article_key(author, publish_time, title, identifiers)
+
         return {
             "title": title,
             "detail_text": detail_text,
             "author": author,
             "publish_time": publish_time,
+            "canonical_url": canonical_url,
+            "url": canonical_url,
+            "source_article_id": source_article_id,
+            "wechat_identifiers": identifiers,
         }
 
     except Exception as e:
@@ -510,7 +848,7 @@ def is_relevant(title: str, text: str = "") -> bool:
     Returns:
         True 如果相关
     """
-    combined = (title + " " + text[:500]).lower()
+    combined = (title + " " + text[:5000]).lower()
     for keyword in RELEVANCE_KEYWORDS:
         if keyword.lower() in combined:
             return True
@@ -531,63 +869,125 @@ def crawl_wechat_events(hours: int = 24) -> list:
     Returns:
         标准格式文章列表 [{"title", "detail_text", "url", "publish_time", "source_name", "author"}, ...]
     """
-    logger.info(f"Starting WeChat crawl (last {hours}h)...")
-
-    # 1. 搜索所有目标公众号
-    articles = search_all_accounts()
-    logger.info(f"Total articles found: {len(articles)}")
-
-    # 2. 标题关键词过滤
-    relevant = [a for a in articles if is_relevant(a.get("title", ""))]
-    logger.info(f"Relevant after keyword filter: {len(relevant)}")
-
-    # 3. 解析正文
+    logger.info("Starting WeChat crawl (last %sh)...", hours)
+    state = _load_crawl_state()
+    now = datetime.now(SHANGHAI_TZ)
+    cutoff = None if hours == 0 else now - timedelta(hours=max(0, hours) + INCREMENTAL_OVERLAP_HOURS)
+    max_pages = FULL_SEARCH_MAX_PAGES if hours == 0 else SEARCH_MAX_PAGES
+    articles = search_all_accounts(page=1, max_pages=max_pages)
+    accounts = {_normalize_account_name(item["name"]): item for item in get_all_accounts()}
+    stats = {
+        "search_results": len(articles),
+        "publisher_verified": 0,
+        "out_of_window": 0,
+        "quarantined": 0,
+        "redirect_resolved": 0,
+        "body_fetched": 0,
+        "relevant": 0,
+        "processed_skipped": 0,
+        "failed": 0,
+        "failures_by_stage": {},
+    }
     results = []
-    seen_urls = set()
+    seen_candidates = set()
+    pending_failures = []
 
-    for article in relevant:
-        url = article.get("url", "")
-        if not url or url in seen_urls:
+    for article in articles:
+        target_name = article.get("target_account", "")
+        account = accounts.get(_normalize_account_name(target_name), {
+            "name": target_name,
+            "aliases": article.get("target_aliases", []),
+        })
+        account_key = _normalize_account_name(target_name)
+        account_cursor = _parse_iso((state.get("accounts", {}).get(account_key) or {}).get("last_publish_time", ""))
+        account_cutoff = cutoff
+        if cutoff and account_cursor:
+            account_cutoff = min(cutoff, account_cursor - timedelta(hours=INCREMENTAL_OVERLAP_HOURS))
+        candidate_id = _build_article_key(
+            article.get("source_name", ""),
+            article.get("publish_time", ""),
+            article.get("title", ""),
+        )
+        article["source_article_id"] = candidate_id
+        if not _account_matches(article.get("source_name", ""), account):
+            pending_failures.append((dict(article), "publisher_verification", "publisher_mismatch_or_missing"))
+            stats["quarantined"] += 1
+            stats["failures_by_stage"]["publisher_verification"] = stats["failures_by_stage"].get("publisher_verification", 0) + 1
             continue
-        seen_urls.add(url)
+        stats["publisher_verified"] += 1
 
-        # 请求间隔
-        if results:
-            time.sleep(REQUEST_INTERVAL)
+        publish_time = _parse_iso(article.get("publish_time", ""))
+        if account_cutoff and publish_time and publish_time < account_cutoff:
+            stats["out_of_window"] += 1
+            continue
 
-        detail = fetch_wechat_article(url)
+        if candidate_id in seen_candidates or candidate_id in state.get("processed", {}):
+            stats["processed_skipped"] += 1
+            continue
+        seen_candidates.add(candidate_id)
+
+        detail = fetch_wechat_article(article.get("url", ""))
         if detail is None:
-            # 如果无法获取正文，使用搜索摘要
-            detail_text = article.get("summary", "")
-            if not detail_text:
-                continue
-            title = article.get("title", "")
-            publish_time = article.get("publish_time", "")
-            author = ""
-        else:
-            detail_text = detail.get("detail_text", "")
-            title = detail.get("title") or article.get("title", "")
-            publish_time = detail.get("publish_time") or article.get("publish_time", "")
-            author = detail.get("author", "")
+            pending_failures.append((dict(article), "article_fetch", "redirect_or_body_unavailable"))
+            stats["failed"] += 1
+            stats["failures_by_stage"]["article_fetch"] = stats["failures_by_stage"].get("article_fetch", 0) + 1
+            continue
+        stats["redirect_resolved"] += 1
+        stats["body_fetched"] += 1
 
-        # 二次过滤：正文也需包含关键词
-        if not is_relevant(title, detail_text):
+        actual_publisher = detail.get("author", "") or article.get("source_name", "")
+        if not _account_matches(actual_publisher, account):
+            failed = {**article, **detail, "source_name": actual_publisher}
+            pending_failures.append((failed, "publisher_verification", "article_publisher_mismatch"))
+            stats["quarantined"] += 1
+            stats["failures_by_stage"]["publisher_verification"] = stats["failures_by_stage"].get("publisher_verification", 0) + 1
             continue
 
-        # 生成唯一 ID（基于 URL 的 hash）
-        url_hash = hashlib.md5(url.encode()).hexdigest()[:8].upper()
+        effective_time = detail.get("publish_time") or article.get("publish_time", "")
+        effective_datetime = _parse_iso(effective_time)
+        if account_cutoff and (effective_datetime is None or effective_datetime < account_cutoff):
+            if effective_datetime is None:
+                failed = {**article, **detail, "source_name": actual_publisher}
+                pending_failures.append((failed, "publish_time", "missing_or_invalid_publish_time"))
+                stats["quarantined"] += 1
+                stats["failures_by_stage"]["publish_time"] = stats["failures_by_stage"].get("publish_time", 0) + 1
+            else:
+                stats["out_of_window"] += 1
+            continue
 
+        title = detail.get("title") or article.get("title", "")
+        detail_text = detail.get("detail_text", "")
+        searchable = " ".join((article.get("summary", ""), detail_text))
+        if not is_relevant(title, searchable):
+            continue
+
+        source_article_id = detail.get("source_article_id") or candidate_id
+        if source_article_id in state.get("processed", {}) or source_article_id in {item["source_article_id"] for item in results}:
+            stats["processed_skipped"] += 1
+            continue
+        canonical_url = detail.get("canonical_url", "")
         results.append({
             "title": title,
             "detail_text": detail_text,
-            "url": url,
-            "publish_time": publish_time,
-            "source_name": article.get("source_name", "微信公众号"),
-            "author": author,
-            "_wechat_id": f"WX-{url_hash}",
+            "url": canonical_url,
+            "canonical_url": canonical_url,
+            "publish_time": effective_time,
+            "source_name": actual_publisher,
+            "author": actual_publisher,
+            "source_article_id": source_article_id,
+            "candidate_article_id": candidate_id,
+            "target_account": target_name,
+            "_wechat_id": source_article_id,
         })
+        stats["relevant"] += 1
 
-    logger.info(f"WeChat crawl complete: {len(results)} relevant articles")
+    if pending_failures:
+        with _state_lock:
+            latest_state = _load_crawl_state()
+            for failed_item, stage, reason in pending_failures:
+                _upsert_failure(latest_state, failed_item, stage, reason)
+            _save_crawl_state(latest_state)
+    logger.info("WeChat crawl stats: %s", json.dumps(stats, ensure_ascii=False, sort_keys=True))
     return results
 
 
@@ -600,6 +1000,7 @@ def get_wechat_accounts() -> list:
             "desc": acc.get("desc", ""),
             "is_core": acc.get("is_core", False),
             "category": acc.get("category", "dynamic"),
+            "aliases": acc.get("aliases", []),
         }
         for acc in all_accounts
     ]

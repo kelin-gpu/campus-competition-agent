@@ -66,9 +66,13 @@ def fetch_wechat_events(hours: int = 24, ctx=None) -> list:
             "title": article.get("title", ""),
             "detail_text": article.get("detail_text", ""),
             "url": article.get("url", ""),
+            "source_url": article.get("canonical_url") or article.get("url", ""),
             "organizer": article.get("author", ""),
             "source_name": article.get("source_name", "微信公众号"),
             "publish_time": article.get("publish_time", ""),
+            "source_article_id": article.get("source_article_id") or article.get("_wechat_id", ""),
+            "candidate_article_id": article.get("candidate_article_id", ""),
+            "target_account": article.get("target_account", ""),
         }
         standard_events.append(event)
 
@@ -101,19 +105,35 @@ def enrich_wechat_events(hours: int = 24, ctx=None) -> list:
             "title": title,
             "detail_text": article.get("detail_text", ""),
             "url": article.get("url", ""),
+            "source_url": article.get("canonical_url") or article.get("url", ""),
             "organizer": article.get("author", ""),
+            "source_name": article.get("source_name", "微信公众号"),
+            "publish_time": article.get("publish_time", ""),
+            "source_article_id": article.get("source_article_id") or article.get("_wechat_id", ""),
+            "candidate_article_id": article.get("candidate_article_id", ""),
+            "target_account": article.get("target_account", ""),
         }
 
         try:
             result = enrich_single_event(raw_event, ctx=ctx)
             # 覆盖 source_name 为公众号名
             result["source_name"] = article.get("source_name", "微信公众号")
+            result["source_url"] = article.get("canonical_url") or article.get("url", "")
+            result["publish_time"] = article.get("publish_time", "")
+            result["source_article_id"] = article.get("source_article_id") or article.get("_wechat_id", "")
+            result["candidate_article_id"] = article.get("candidate_article_id", "")
+            result["target_account"] = article.get("target_account", "")
             result.setdefault("scope_type", "校内活动")  # 公众号来源默认为校内
             enriched.append(result)
         except Exception as e:
             logger.error(f"Failed to enrich WeChat event '{title[:30]}': {e}")
             result = _rule_based_fallback(raw_event, match_ministry_contest(title))
             result["source_name"] = article.get("source_name", "微信公众号")
+            result["source_url"] = article.get("canonical_url") or article.get("url", "")
+            result["publish_time"] = article.get("publish_time", "")
+            result["source_article_id"] = article.get("source_article_id") or article.get("_wechat_id", "")
+            result["candidate_article_id"] = article.get("candidate_article_id", "")
+            result["target_account"] = article.get("target_account", "")
             result["scope_type"] = "校内活动"
             enriched.append(result)
 

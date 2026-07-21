@@ -93,58 +93,9 @@ def step4_wechat_crawl():
     """微信公众号文章爬取"""
     print_section("Step 4: 微信公众号文章爬取")
     try:
-        from tools.wechat_crawler import search_all_accounts, is_relevant, fetch_wechat_article, REQUEST_INTERVAL
-        import hashlib
-        import time as _time
+        from tools.wechat_crawler import crawl_wechat_events
 
-        # 1. 搜索所有目标公众号
-        articles = search_all_accounts()
-        logger.info(f"Total articles found: {len(articles)}")
-
-        # 2. 标题关键词过滤
-        relevant = [a for a in articles if is_relevant(a.get("title", ""))]
-        logger.info(f"Relevant after keyword filter: {len(relevant)}")
-
-        # 3. 解析正文（修复 detail=None 时的 bug）
-        results = []
-        seen_urls = set()
-
-        for article in relevant:
-            url = article.get("url", "")
-            if not url or url in seen_urls:
-                continue
-            seen_urls.add(url)
-
-            if results:
-                _time.sleep(REQUEST_INTERVAL)
-
-            detail = fetch_wechat_article(url)
-            if detail is None:
-                detail_text = article.get("summary", "")
-                if not detail_text:
-                    continue
-                title = article.get("title", "")
-                publish_time = article.get("publish_time", "")
-                author = ""
-            else:
-                detail_text = detail.get("detail_text", "")
-                title = detail.get("title") or article.get("title", "")
-                publish_time = detail.get("publish_time") or article.get("publish_time", "")
-                author = detail.get("author", "")
-
-            if not is_relevant(title, detail_text):
-                continue
-
-            url_hash = hashlib.md5(url.encode()).hexdigest()[:8].upper()
-            results.append({
-                "title": title,
-                "detail_text": detail_text,
-                "url": url,
-                "publish_time": publish_time,
-                "source_name": article.get("source_name", "微信公众号"),
-                "author": author,
-                "_wechat_id": f"WX-{url_hash}",
-            })
+        results = crawl_wechat_events(hours=0)
 
         logger.info(f"微信公众号爬取完成: {len(results)} 篇相关文章")
         # 保存原始数据

@@ -307,15 +307,25 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
     for event in enriched_events:
         try:
             title = event.get("title", "")
+            source_article_id = event.get("source_article_id", "")
             if not title:
                 stats["skipped"] += 1
+                stats["details"].append({
+                    "action": "skipped_invalid",
+                    "title": "",
+                    "source_article_id": source_article_id,
+                })
                 continue
 
             # Filter obvious ads / training before merging
             if _is_likely_ad_or_training(title):
                 logger.info(f"Skipping ad/training content: {title[:60]}")
                 stats["skipped"] += 1
-                stats["details"].append({"action": "skipped_ad", "title": title[:50]})
+                stats["details"].append({
+                    "action": "skipped_ad",
+                    "title": title[:50],
+                    "source_article_id": source_article_id,
+                })
                 continue
 
             # Timeline validation
@@ -336,12 +346,18 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
                     "action": action,
                     "event_id": edition.event_id,
                     "title": title[:50],
+                    "source_article_id": source_article_id,
                 })
 
         except Exception as e:
             logger.error(f"Failed to sync event '{event.get('title', 'unknown')[:30]}': {e}")
             stats["errors"] += 1
-            stats["details"].append({"action": "error", "title": event.get("title", "unknown")[:50], "error": str(e)})
+            stats["details"].append({
+                "action": "error",
+                "title": event.get("title", "unknown")[:50],
+                "source_article_id": event.get("source_article_id", ""),
+                "error": str(e),
+            })
 
     logger.info(
         "Sync complete: added=%s, updated=%s, skipped=%s, errors=%s",
@@ -534,6 +550,17 @@ def run_wechat_sync(hours: int = 6, ctx=None) -> dict:
 
         # 同步入库
         stats = sync_events_to_db(enriched, ctx=ctx)
+        terminal_actions = {"added", "updated", "skipped_ad", "skipped_invalid"}
+        acknowledged_ids = {
+            detail.get("source_article_id")
+            for detail in stats.get("details", [])
+            if detail.get("action") in terminal_actions and detail.get("source_article_id")
+        }
+        if acknowledged_ids:
+            from tools.wechat_crawler import mark_wechat_articles_processed
+            by_id = {event.get("source_article_id"): event for event in wechat_events}
+            mark_wechat_articles_processed([by_id[item_id] for item_id in acknowledged_ids if item_id in by_id])
+        stats["wechat_acknowledged"] = len(acknowledged_ids)
         logger.info(f"=== WeChat sync complete: {stats} ===")
         return stats
 

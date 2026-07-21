@@ -250,6 +250,12 @@ def enrich_single_event(raw_event: dict, ctx=None, llm_timeout: int = 30) -> dic
     enriched.setdefault("status", "报名中")
     enriched.setdefault("update_time", datetime.now().isoformat())
     enriched.setdefault("original_text", raw_event.get("detail_text", ""))
+    for key in ("source_name", "source_article_id", "candidate_article_id", "publish_time", "target_account"):
+        if raw_event.get(key):
+            enriched[key] = raw_event[key]
+    source_url = raw_event.get("source_url") or raw_event.get("detail_url") or raw_event.get("url", "")
+    if source_url:
+        enriched["source_url"] = source_url
 
     # 5. 若 LLM 补全后关键时间字段仍缺失，标记需要交叉验证
     critical_missing = []
@@ -278,13 +284,16 @@ def _rule_based_fallback(raw_event: dict, ministry_match: Optional[dict] = None)
         "tags": json.dumps(["竞赛"], ensure_ascii=False),
         "policy_tags": json.dumps(["综测加分"], ensure_ascii=False),
         "organizer": raw_event.get("organizer", ""),
-        "source_url": raw_event.get("detail_url") or raw_event.get("url", ""),
-        "source_name": "赛氪",
+        "source_url": raw_event.get("source_url") or raw_event.get("detail_url") or raw_event.get("url", ""),
+        "source_name": raw_event.get("source_name") or raw_event.get("source") or "赛氪",
         "authority_level": "中",
         "status": "报名中",
         "original_text": detail_text,
         "is_ministry_approved": False,
     }
+    for key in ("source_article_id", "candidate_article_id", "publish_time", "target_account"):
+        if raw_event.get(key):
+            result[key] = raw_event[key]
 
     if ministry_match:
         result["is_ministry_approved"] = True
