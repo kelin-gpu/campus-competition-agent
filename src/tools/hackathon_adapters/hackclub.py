@@ -10,6 +10,7 @@ Strategy:
 
 import re
 import logging
+import time
 from typing import List, Optional
 from datetime import datetime, timezone
 
@@ -111,13 +112,17 @@ class HackClubAdapter(BaseAdapter):
             ),
             "Accept": "text/html,application/xhtml+xml",
         }
-        try:
-            r = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-            if r.status_code == 200 and len(r.text) > 5000:
-                return r.text
-            logger.warning("HackClub listing status=%s len=%d", r.status_code, len(r.text))
-        except Exception as e:
-            logger.warning("HackClub fetch error: %s", e)
+        session = requests.Session()
+        for attempt in range(3):
+            try:
+                r = session.get(url, headers=headers, timeout=15, allow_redirects=True)
+                if r.status_code == 200 and len(r.text) > 5000:
+                    return r.text
+                logger.warning("HackClub listing status=%s len=%d", r.status_code, len(r.text))
+            except requests.RequestException as e:
+                logger.warning("HackClub fetch attempt %d/3 failed: %s", attempt + 1, e)
+            if attempt < 2:
+                time.sleep(0.5 * (2 ** attempt))
         return None
 
     def _parse_og_description(self, html: str) -> List[dict]:

@@ -9,6 +9,7 @@ import re
 import json
 import logging
 import os
+from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timezone
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Load search queries from config
 _QUERIES_CACHE = None
+_MISSING_CREDENTIALS_WARNED = False
 
 
 def _load_search_queries():
@@ -30,8 +32,8 @@ def _load_search_queries():
     current_year = now.year
     next_year = current_year + 1
 
-    # Default queries with year substitution
-    template_queries = [
+    # Defaults are used only if the external source configuration is missing.
+    default_queries = [
         # Chinese
         "黑客松 报名 {year}",
         "大学生 黑客松 {year}",
@@ -50,16 +52,30 @@ def _load_search_queries():
         "university hackathon register {year}",
     ]
 
-    queries = []
-    for q in template_queries:
-        # Substitute both current and next year
-        queries.append(q.format(year=current_year))
-        queries.append(q.format(year=next_year))
+    config_path = Path(__file__).resolve().parents[3] / "assets" / "data" / "hackathon_sources.json"
+    template_queries = default_queries
+    try:
+        with config_path.open("r", encoding="utf-8") as config_file:
+            configured = json.load(config_file).get("search_queries", [])
+        if configured:
+            template_queries = [str(query).strip() for query in configured if str(query).strip()]
+    except (OSError, ValueError, TypeError) as exc:
+        logger.warning("Unable to load hackathon search queries from %s: %s", config_path, exc)
 
-    # Add queries without year
-    for q in ["site:devfolio.co hackathon", "hackathon registration open now"]:
-        if q not in queries:
-            queries.append(q)
+    queries = []
+    for template in template_queries:
+        if "{year}" in template:
+            expanded = [template.format(year=current_year), template.format(year=next_year)]
+        elif re.search(r"\b20\d{2}\b", template):
+            expanded = [
+                re.sub(r"\b20\d{2}\b", str(year), template)
+                for year in (current_year, next_year)
+            ]
+        else:
+            expanded = [template]
+        for query in expanded:
+            if query not in queries:
+                queries.append(query)
 
     _QUERIES_CACHE = queries
     return queries
@@ -132,6 +148,14 @@ class GeneralSearchAdapter(BaseAdapter):
 
     def _do_search(self, ctx, query: str, num: int = 6) -> List[dict]:
         """Execute a single search query using SearchClient."""
+        global _MISSING_CREDENTIALS_WARNED
+        if not os.getenv("COZE_WORKLOAD_IDENTITY_API_KEY"):
+            if not _MISSING_CREDENTIALS_WARNED:
+                logger.warning(
+                    "Web search sources disabled: COZE_WORKLOAD_IDENTITY_API_KEY is not configured"
+                )
+                _MISSING_CREDENTIALS_WARNED = True
+            return []
         try:
             from coze_coding_dev_sdk import SearchClient
             client = SearchClient(ctx=ctx)

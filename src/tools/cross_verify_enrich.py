@@ -4,19 +4,25 @@
 原则：至少 2/3 来源一致才接受，单源信息不入库。
 """
 
-import json
+import html
 import logging
 import re
-from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import parse_qs, urlparse
 
 import requests
-from langchain.tools import tool
-from coze_coding_utils.log.write_log import request_context
-from coze_coding_utils.runtime_ctx.context import new_context
 
-from storage.database.supabase_client import get_supabase_client
+from storage.database.db import get_session
+from tools.catalog_service import get_edition_by_event_id, record_evidence
+from tools.cross_verify_rules import (
+    cross_check,
+    extract_deadline,
+    extract_event_time,
+    extract_level,
+    extract_organizer,
+    source_domain,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +43,22 @@ USER_AGENTS = [
 ]
 
 
-def _search_web(query: str, timeout: int = 15) -> str:
-    """通过 DuckDuckGo 搜索并返回页面文本摘要"""
+def _decode_result_url(raw_url: str) -> str:
+    """Resolve DuckDuckGo redirect links to the actual source URL."""
+    url = html.unescape(raw_url)
+    if url.startswith("//"):
+        url = f"https:{url}"
+    parsed = urlparse(url)
+    if parsed.hostname and parsed.hostname.endswith("duckduckgo.com"):
+        target = parse_qs(parsed.query).get("uddg", [""])[0]
+        if target:
+            url = target
+    parsed = urlparse(url)
+    return url if parsed.scheme in {"http", "https"} and parsed.hostname else ""
+
+
+def _search_web(query: str, timeout: int = 15) -> list[dict]:
+    """Return linked search results; snippets alone never count as sources."""
     try:
         resp = requests.get(
             "https://html.duckduckgo.com/html/",
@@ -47,19 +67,31 @@ def _search_web(query: str, timeout: int = 15) -> str:
             timeout=timeout,
         )
         if resp.status_code != 200:
-            return ""
-        # 提取搜索结果摘要
-        snippets = re.findall(
-            r'class="result__snippet"[^>]*>(.*?)</a>',
-            resp.text,
-            re.DOTALL,
+            return []
+
+        results = []
+        anchor_pattern = re.compile(
+            r'<a\b(?=[^>]*class=["\'][^"\']*\bresult__a\b[^"\']*["\'])'
+            r'(?=[^>]*href=["\']([^"\']+)["\'])[^>]*>(.*?)</a>',
+            re.DOTALL | re.IGNORECASE,
         )
-        return "\n".join(
-            re.sub(r"<[^>]+>", "", s).strip() for s in snippets[:5]
-        )
+        for raw_url, raw_title in anchor_pattern.findall(resp.text):
+            url = _decode_result_url(raw_url)
+            domain = source_domain(url)
+            if not domain:
+                continue
+            title = html.unescape(re.sub(r"<[^>]+>", "", raw_title)).strip()
+            results.append(
+                {
+                    "source_name": title or domain,
+                    "source_url": url,
+                    "source_domain": domain,
+                }
+            )
+        return results
     except Exception as e:
         logger.warning(f"搜索失败 ({query[:30]}...): {e}")
-        return ""
+        return []
 
 
 def _fetch_page_text(url: str, timeout: int = 15) -> str:
@@ -86,89 +118,41 @@ def _fetch_page_text(url: str, timeout: int = 15) -> str:
 
 def _extract_deadline(text: str) -> Optional[str]:
     """从文本中提取报名截止日期"""
-    patterns = [
-        r"报名截止[：:]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-        r"截止日期[：:]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-        r"截止时间[：:]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-        r"(\d{4})[年/-](\d{1,2})[月/-](\d{1,2}).*截止",
-        r"报名时间[：:].*?[至~-]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-    ]
-    for pat in patterns:
-        m = re.search(pat, text)
-        if m:
-            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            try:
-                return f"{y:04d}-{mo:02d}-{d:02d}T23:59:59+08:00"
-            except ValueError:
-                continue
-    return None
+    return extract_deadline(text)
 
 
 def _extract_event_time(text: str) -> Optional[str]:
     """从文本中提取比赛/活动时间"""
-    patterns = [
-        r"比赛时间[：:]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-        r"活动时间[：:]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-        r"竞赛时间[：:]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-        r"举办时间[：:]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})",
-        r"(\d{4})[年/-](\d{1,2})[月/-](\d{1,2}).*[举行举办开赛开始]",
-    ]
-    for pat in patterns:
-        m = re.search(pat, text)
-        if m:
-            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            try:
-                return f"{y:04d}-{mo:02d}-{d:02d}T08:00:00+08:00"
-            except ValueError:
-                continue
-    return None
+    return extract_event_time(text)
 
 
 def _extract_level(text: str) -> Optional[str]:
     """从文本中提取竞赛级别"""
-    level_map = [
-        ("国家级", r"国家[级际]|全国"),
-        ("省级", r"省[级际]|全省"),
-        ("校级", r"校[级际]|全校|南京大学.*主办"),
-        ("院级", r"院[级际]|书院.*主办|学院.*主办"),
-    ]
-    for level, pat in level_map:
-        if re.search(pat, text):
-            return level
-    return None
+    return extract_level(text)
 
 
 def _extract_organizer(text: str) -> Optional[str]:
     """从文本中提取主办方"""
-    patterns = [
-        r"主办(方|单位)[：:]\s*([^\n。，,]{4,40})",
-        r"承办(方|单位)[：:]\s*([^\n。，,]{4,40})",
-        r"由\s*([^\n。，,]{3,30})\s*主办",
-    ]
-    for pat in patterns:
-        m = re.search(pat, text)
-        if m:
-            return m.group(1).strip()
-    return None
+    return extract_organizer(text)
 
 
 def _collect_candidates(title: str, missing_fields: list[str]) -> list[dict]:
-    """从 3 个独立来源收集候选值"""
+    """Fetch up to three pages hosted on different domains."""
+    search_results = _search_web(f"{title} 报名截止 比赛时间 竞赛 官网")
     sources = []
+    seen_domains = set()
+    for result in search_results:
+        domain = result["source_domain"]
+        if domain in seen_domains:
+            continue
+        text = _fetch_page_text(result["source_url"])
+        if not text:
+            continue
+        seen_domains.add(domain)
+        sources.append({**result, "text": text})
+        if len(sources) == 3:
+            break
 
-    # 来源 1：直接搜索竞赛名
-    text1 = _search_web(f"{title} 报名截止 比赛时间")
-    sources.append({"name": "DuckDuckGo搜索", "text": text1})
-
-    # 来源 2：搜索竞赛名 + 赛事官网
-    text2 = _search_web(f"{title} 竞赛 官网")
-    sources.append({"name": "DuckDuckGo搜索(官网)", "text": text2})
-
-    # 来源 3：搜索竞赛名 + 2026
-    text3 = _search_web(f"{title} 2026")
-    sources.append({"name": "DuckDuckGo搜索(2026)", "text": text3})
-
-    # 对每个来源提取候选值
     results = []
     for src in sources:
         candidates = {}
@@ -187,7 +171,9 @@ def _collect_candidates(title: str, missing_fields: list[str]) -> list[dict]:
                 candidates[field] = val
         results.append(
             {
-                "source_name": src["name"],
+                "source_name": src["source_name"],
+                "source_url": src["source_url"],
+                "source_domain": src["source_domain"],
                 "candidates": candidates,
                 "text_preview": src["text"][:200],
             }
@@ -196,48 +182,11 @@ def _collect_candidates(title: str, missing_fields: list[str]) -> list[dict]:
     return results
 
 
-def _cross_check(candidates_list: list[dict]) -> dict:
-    """交叉验证：2/3 以上来源一致才接受"""
-    verified = {}
-    trace = {}
-
-    # 收集所有字段
-    all_fields = set()
-    for c in candidates_list:
-        all_fields.update(c["candidates"].keys())
-
-    for field in all_fields:
-        values = []
-        for c in candidates_list:
-            val = c["candidates"].get(field)
-            if val:
-                values.append(val)
-
-        if not values:
-            continue
-
-        # 统计一致次数
-        from collections import Counter
-
-        counter = Counter(values)
-        most_common = counter.most_common(1)[0]
-        agree_count = most_common[1]
-        total = len(candidates_list)  # 总来源数
-
-        trace[field] = {
-            "values_found": values,
-            "agree_count": agree_count,
-            "total_sources": total,
-        }
-
-        # 至少 2/3 一致
-        if agree_count >= 2:
-            verified[field] = most_common[0]
-
-    return verified, trace
+def _cross_check(candidates_list: list[dict]) -> tuple[dict, dict]:
+    """交叉验证：至少两个独立域名一致才接受。"""
+    return cross_check(candidates_list)
 
 
-@tool
 def cross_verify_and_enrich(event_id: str) -> str:
     """对指定竞赛记录进行三方交叉验证数据补充。
 
@@ -253,23 +202,23 @@ def cross_verify_and_enrich(event_id: str) -> str:
     Returns:
         补充结果摘要（哪些字段被补充、置信度、验证来源）
     """
-    ctx = request_context.get() or new_context(method="cross_verify_and_enrich")
-    supabase = get_supabase_client()
-
     # 1. 获取当前记录
-    resp = (
-        supabase.table("event_info")
-        .select("event_id,title,signup_deadline,event_time,contest_level,organizer,summary")
-        .eq("event_id", event_id)
-        .execute()
-    )
-    data: list = resp.data if isinstance(resp.data, list) else []
-    if not data:
-        return f"❌ 未找到记录: {event_id}"
-
-    record: dict = data[0] if isinstance(data[0], dict) else {}
-    if not record:
-        return f"❌ 记录数据异常: {event_id}"
+    session = get_session()
+    try:
+        edition = get_edition_by_event_id(session, event_id)
+        if edition is None:
+            return f"❌ 未找到记录: {event_id}"
+        record = {
+            "event_id": edition.event_id,
+            "title": edition.title,
+            "signup_deadline": edition.signup_deadline,
+            "event_time": edition.event_time,
+            "contest_level": edition.catalog.contest_level,
+            "organizer": edition.catalog.organizer,
+            "summary": edition.summary,
+        }
+    finally:
+        session.close()
 
     title: str = str(record.get("title", ""))
 
@@ -291,10 +240,19 @@ def cross_verify_and_enrich(event_id: str) -> str:
     verified, trace = _cross_check(candidates)
 
     if not verified:
-        detail = "\n".join(
-            f"  - {f}: {t['values_found']} (一致数: {t['agree_count']}/{t['total_sources']})"
-            for f, t in trace.items()
-        )
+        detail_lines = []
+        for field, field_trace in trace.items():
+            detail_lines.append(
+                f"  - {field}: 一致数 "
+                f"{field_trace['agree_count']}/{field_trace['total_sources']}"
+            )
+            detail_lines.extend(
+                "    "
+                f"{source['source_name']} ({source['source_url']}): "
+                f"{source['candidate_value']}"
+                for source in field_trace["sources"]
+            )
+        detail = "\n".join(detail_lines) or "  - 未获得至少两个独立域名的候选值"
         return (
             f"⚠️ 交叉验证未通过，无字段达到 2/3 一致阈值，不补充任何数据。\n\n"
             f"记录: {title}\n"
@@ -311,11 +269,43 @@ def cross_verify_and_enrich(event_id: str) -> str:
             "value": value,
             "agree_count": trace[field]["agree_count"],
             "total_sources": trace[field]["total_sources"],
+            "sources": [
+                source
+                for source in trace[field]["sources"]
+                if source["candidate_value"] == value
+            ],
         }
 
-    update_data["update_time"] = "now()"
+    session = get_session()
+    try:
+        edition = get_edition_by_event_id(session, event_id)
+        if edition is None:
+            return f"❌ 更新前记录已不存在: {event_id}"
+        for field, value in verified.items():
+            if field in {"signup_deadline", "event_time"}:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                setattr(edition, field, parsed)
+            elif field == "summary":
+                edition.summary = value
+            elif field in {"contest_level", "organizer"}:
+                setattr(edition.catalog, field, value)
 
-    supabase.table("event_info").update(update_data).eq("event_id", event_id).execute()
+            for source in verify_log[field]["sources"]:
+                record_evidence(
+                    session,
+                    edition,
+                    field,
+                    value,
+                    source_url=source["source_url"],
+                    extraction_method="cross_verify",
+                    confidence="high",
+                    verification_status="verified",
+                )
+        edition.verification_status = "verified"
+        edition.updated_at = datetime.now(timezone.utc)
+        session.commit()
+    finally:
+        session.close()
 
     # 6. 生成结果报告
     lines = [
@@ -326,7 +316,13 @@ def cross_verify_and_enrich(event_id: str) -> str:
     ]
     for field, info in verify_log.items():
         confidence = f"{info['agree_count']}/{info['total_sources']}"
-        lines.append(f"| {field} | {info['value'][:40]} | {confidence} | {confidence} |")
+        source_links = "<br>".join(
+            f"[{source['source_name']}]({source['source_url']})"
+            for source in info["sources"]
+        )
+        lines.append(
+            f"| {field} | {str(info['value'])[:40]} | {confidence} | {source_links} |"
+        )
 
     lines.append("")
     lines.append(f"✅ 共补充 {len(verified)} 个字段，未通过验证的字段已丢弃。")

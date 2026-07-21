@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from storage.database.catalog_models import CompetitionCatalog, EventEdition, FieldEvidence
 from storage.database.db import get_engine
+from tools.event_schema import is_meaningful
 
 
 def _normalize_title(title: Optional[str]) -> str:
@@ -141,14 +142,16 @@ def upsert_edition(
     deadline = _coerce_datetime(edition_fields.get("signup_deadline"))
     event_time = _coerce_datetime(edition_fields.get("event_time"))
 
-    # Timeline validation: event_time must not precede signup_deadline
-    if deadline and event_time and event_time < deadline:
-        event_time = None
+    # Missing or invalid incoming timestamps must not erase trusted values.
+    effective_deadline = deadline or (edition.signup_deadline if edition else None)
+    effective_event_time = event_time or (edition.event_time if edition else None)
 
-    status = edition_fields.get("status")
-    if not status or status == "报名中":
-        # Recompute from deadline unless explicitly provided
-        status = _compute_status(deadline)
+    # Timeline validation: event_time must not precede signup_deadline
+    if effective_deadline and effective_event_time and effective_event_time < effective_deadline:
+        effective_event_time = None
+
+    # Deadline is the source of truth for lifecycle state.
+    status = _compute_status(effective_deadline)
 
     if edition is None:
         edition = EventEdition(
@@ -156,8 +159,8 @@ def upsert_edition(
             event_id=event_id,
             title=title,
             edition_year=_extract_edition_year(title),
-            signup_deadline=deadline,
-            event_time=event_time,
+            signup_deadline=effective_deadline,
+            event_time=effective_event_time,
             status=status,
             **{k: v for k, v in edition_fields.items() if k not in ("signup_deadline", "event_time", "status")},
         )
@@ -168,16 +171,14 @@ def upsert_edition(
     # Update dynamic fields if new data is more complete
     edition.title = title
     edition.edition_year = _extract_edition_year(title)
-    if deadline is not None:
-        edition.signup_deadline = deadline
-    if event_time is not None:
-        edition.event_time = event_time
+    edition.signup_deadline = effective_deadline
+    edition.event_time = effective_event_time
     edition.status = status
 
     for key, value in edition_fields.items():
         if key in ("signup_deadline", "event_time", "status"):
             continue
-        if value not in (None, "") and getattr(edition, key) in (None, ""):
+        if is_meaningful(value) and not is_meaningful(getattr(edition, key)):
             setattr(edition, key, value)
 
     session.flush()
@@ -197,6 +198,17 @@ def record_evidence(
     """Record provenance for a field value."""
     if field_value in (None, ""):
         return None
+    existing = session.execute(
+        select(FieldEvidence).where(
+            FieldEvidence.edition_id == edition.edition_id,
+            FieldEvidence.field_name == field_name,
+            FieldEvidence.field_value == str(field_value)[:2000],
+            FieldEvidence.source_url == (source_url or ""),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
     evidence = FieldEvidence(
         edition_id=edition.edition_id,
         field_name=field_name,
@@ -219,7 +231,7 @@ def merge_event(
 ) -> EventEdition:
     """High-level helper: merge raw event data into catalog + edition + evidence."""
     title = event_data.get("title", "")
-    event_id = event_data.get("event_id") or f"EVT-{uuid.uuid4().hex[:8].upper()}"
+    event_id = event_data.get("event_id")
 
     # Stable fields -> catalog
     catalog_fields = {
@@ -239,6 +251,41 @@ def merge_event(
 
     catalog, _ = get_or_create_catalog(session, title, **catalog_fields)
 
+    # Resolve the same edition deterministically across repeated crawls and sources.
+    if not event_id:
+        edition_year = _extract_edition_year(title)
+        existing_edition = None
+        if edition_year is not None:
+            existing_edition = session.execute(
+                select(EventEdition).where(
+                    EventEdition.catalog_id == catalog.catalog_id,
+                    EventEdition.edition_year == edition_year,
+                )
+            ).scalars().first()
+        source_url = event_data.get("source_url") or ""
+        if existing_edition is None and source_url:
+            existing_edition = session.execute(
+                select(EventEdition).where(
+                    EventEdition.catalog_id == catalog.catalog_id,
+                    EventEdition.source_url == source_url,
+                )
+            ).scalars().first()
+        if existing_edition is None and edition_year is None:
+            existing_edition = session.execute(
+                select(EventEdition).where(
+                    EventEdition.catalog_id == catalog.catalog_id,
+                    EventEdition.title == title,
+                )
+            ).scalars().first()
+
+        if existing_edition is not None:
+            event_id = existing_edition.event_id
+        else:
+            identity = "|".join(
+                [str(catalog.catalog_id), str(edition_year or ""), title, source_url]
+            )
+            event_id = f"EVT-{uuid.uuid5(uuid.NAMESPACE_URL, identity).hex[:12].upper()}"
+
     # Dynamic fields -> edition
     edition_fields = {
         "summary": event_data.get("summary") or "",
@@ -255,7 +302,8 @@ def merge_event(
         "verification_status": event_data.get("verification_status") or "pending_review",
     }
 
-    edition, _ = upsert_edition(session, catalog, event_id, title, **edition_fields)
+    edition, created = upsert_edition(session, catalog, event_id, title, **edition_fields)
+    edition._merge_created = created
 
     # Record evidence for each non-empty field
     evidence_fields = [

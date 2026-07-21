@@ -14,11 +14,24 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from lxml import html
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = PROJECT_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from tools.saikr_rules import (
+    canonicalize_saikr_url,
+    is_likely_saikr_promotion,
+    normalize_saikr_title,
+    saikr_title_identity,
+)
 
 
 DESKTOP_URL = "https://www.saikr.com/index/hot/contest"
@@ -177,12 +190,15 @@ def parse_list_page(page_html: str, source_url: str) -> list[dict[str, str]]:
     for anchor in doc.xpath("//a[@href]"):
         href = urllib.parse.urljoin(source_url, anchor.get("href") or "")
         href = urllib.parse.urldefrag(href)[0]
-        title = clean_text(anchor.text_content())
+        title = normalize_saikr_title(clean_text(anchor.text_content()))
         if not is_contest_detail_url(href) or href in seen:
             continue
         if len(title) < 4 or title in {"查看详情", "立即报名", "报名参赛"}:
             continue
+        if is_likely_saikr_promotion(title):
+            continue
 
+        href = canonicalize_saikr_url(href)
         seen.add(href)
         records.append(
             {
@@ -198,12 +214,18 @@ def parse_list_page(page_html: str, source_url: str) -> list[dict[str, str]]:
 
 def merge_records(record_groups: list[list[dict[str, str]]], limit: int) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    seen_urls: set[str] = set()
+    seen_titles: set[str] = set()
     for group in record_groups:
         for record in group:
-            if record["detail_url"] in seen:
+            canonical_url = canonicalize_saikr_url(record["detail_url"])
+            title_key = saikr_title_identity(record.get("list_title", ""))
+            if canonical_url in seen_urls or (title_key and title_key in seen_titles):
                 continue
-            seen.add(record["detail_url"])
+            record["detail_url"] = canonical_url
+            seen_urls.add(canonical_url)
+            if title_key:
+                seen_titles.add(title_key)
             record["rank"] = len(merged) + 1
             merged.append(record)
             if len(merged) >= limit:

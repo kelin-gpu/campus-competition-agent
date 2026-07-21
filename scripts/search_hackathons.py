@@ -43,7 +43,6 @@ def main() -> None:
         "--source", type=str, default="all",
         help="Source to use: devfolio, mlh, hackclub, devpost, search, all"
     )
-    parser.add_argument("--max-pages", type=int, default=3, help="Max listing pages")
     parser.add_argument("--save-report", type=str, default="", help="Save report JSON to file")
 
     args = parser.parse_args()
@@ -90,6 +89,7 @@ def _print_pretty(stats: dict, dry_run: bool) -> None:
     print("=" * 70)
     print(f"  发现候选:           {stats.get('discovered', 0):>6}")
     print(f"  预去重:             {stats.get('prefetch_duplicates', 0):>6}")
+    print(f"  全局限额截断:       {stats.get('truncated_by_limit', 0):>6}")
     print(f"  详情页候选:         {stats.get('detail_page_candidates', 0):>6}")
     print(f"  通过筛选:           {stats.get('accepted', 0):>6}")
     print(f"  入库:               {stats.get('added', 0):>6}")

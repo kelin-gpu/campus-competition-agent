@@ -14,22 +14,8 @@ from coze_coding_utils.runtime_ctx.context import default_headers
 
 from storage.memory.memory_saver import get_memory_saver
 from tools.event_query_tool import query_events, query_event_detail, get_deadline_reminders
-from tools.event_parse_tool import parse_and_save_notification
+from tools.event_parse_tool import parse_notification
 from tools.web_search_tool import web_search_events
-from tools.sync_tools import (
-    trigger_full_sync,
-    trigger_quick_sync,
-    trigger_incremental_sync,
-    enrich_single_event_tool,
-    get_sync_status,
-    start_scheduled_sync,
-    trigger_wechat_sync,
-    list_wechat_sources,
-    refresh_wechat_accounts,
-    cleanup_expired_events,
-)
-from tools.knowledge_base import search_knowledge_base
-from tools.cross_verify_enrich import cross_verify_and_enrich
 from tools.user_profile import (
     get_user_profile,
     update_user_profile,
@@ -96,22 +82,8 @@ def build_agent(ctx=None):
         query_events,
         query_event_detail,
         get_deadline_reminders,
-        parse_and_save_notification,
+        parse_notification,
         web_search_events,
-        trigger_full_sync,
-        trigger_quick_sync,
-        trigger_incremental_sync,
-        enrich_single_event_tool,
-        get_sync_status,
-        start_scheduled_sync,
-        trigger_wechat_sync,
-        list_wechat_sources,
-        refresh_wechat_accounts,
-        cleanup_expired_events,
-        # 知识库 RAG
-        search_knowledge_base,
-        # 三方交叉验证数据补充
-        cross_verify_and_enrich,
         # 用户画像与个性化推荐
         get_user_profile,
         update_user_profile,

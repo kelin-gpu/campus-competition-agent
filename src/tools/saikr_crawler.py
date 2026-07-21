@@ -14,6 +14,13 @@ from typing import Any
 
 from lxml import html
 
+from tools.saikr_rules import (
+    canonicalize_saikr_url,
+    is_likely_saikr_promotion,
+    normalize_saikr_title,
+    saikr_title_identity,
+)
+
 DESKTOP_URL = "https://www.saikr.com/index/hot/contest"
 MOBILE_URL = "https://m.saikr.com/index/hot/contest"
 
@@ -147,6 +154,7 @@ def extract_hot_contest_links(doc) -> list[dict]:
     """从热门竞赛列表页提取竞赛链接"""
     links = []
     seen_urls = {}  # url -> title (only store when we have a valid title)
+    seen_titles = set()
 
     # 查找所有指向竞赛详情页的链接
     for a_tag in doc.xpath("//a[@href]"):
@@ -164,7 +172,7 @@ def extract_hot_contest_links(doc) -> list[dict]:
             continue
 
         # 标准化URL（统一用www）
-        normalized = href.replace("m.saikr.com", "www.saikr.com")
+        normalized = canonicalize_saikr_url(href)
 
         # 提取标题（先于去重检查，避免空标题占用URL）
         title = clean_text(a_tag.text_content())
@@ -174,14 +182,17 @@ def extract_hot_contest_links(doc) -> list[dict]:
         if not title or len(title) < 4:
             continue
 
-        # 有有效标题才去重
-        if normalized in seen_urls:
+        title = normalize_saikr_title(title)
+        title_key = saikr_title_identity(title)
+        if is_likely_saikr_promotion(title):
+            continue
+
+        # 同一赛事可能由多个别名 URL 暴露，同时按 URL 和标题去重。
+        if normalized in seen_urls or (title_key and title_key in seen_titles):
             continue
         seen_urls[normalized] = title
-
-        # 清理标题中可能的赛氪后缀
-        title = re.sub(r"-大学生竞赛-赛氪.*$", "", title).strip()
-        title = re.sub(r"-赛氪竞赛网.*$", "", title).strip()
+        if title_key:
+            seen_titles.add(title_key)
 
         links.append({
             "title": title,

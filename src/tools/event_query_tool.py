@@ -8,6 +8,7 @@ from langchain.tools import tool
 from postgrest.exceptions import APIError
 from coze_coding_utils.log.write_log import request_context
 from coze_coding_utils.runtime_ctx.context import new_context
+from tools.event_schema import calculate_days_remaining
 
 logger = logging.getLogger(__name__)
 
@@ -41,21 +42,7 @@ def _format_event(event: dict) -> dict:
         "update_time": event.get("update_time"),
     }
 
-    # 计算报名截止剩余天数
-    deadline_str = event.get("signup_deadline")
-    if deadline_str:
-        try:
-            if isinstance(deadline_str, str):
-                deadline = datetime.fromisoformat(deadline_str.replace("Z", "+00:00"))
-            else:
-                deadline = deadline_str
-            now = datetime.now(timezone.utc)
-            delta = deadline - now
-            result["days_remaining"] = max(0, delta.days)
-        except Exception:
-            result["days_remaining"] = None
-    else:
-        result["days_remaining"] = None
+    result["days_remaining"] = calculate_days_remaining(event.get("signup_deadline"))
 
     return result
 

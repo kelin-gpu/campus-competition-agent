@@ -4,18 +4,35 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
-from storage.database.db import get_engine
 from storage.database.catalog_models import (
     CompetitionCatalog,
     EventEdition,
     FieldEvidence,
 )
+from storage.database.shared.model import Base
 from tools.catalog_service import merge_event, merge_catalog, get_or_create_catalog
 from tools.data_sync_workflow import _determine_status, _is_expired, _is_likely_ad_or_training
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
-SessionLocal = sessionmaker(bind=get_engine())
+@pytest.fixture
+def db_session():
+    """Use an isolated database so unit tests never require Coze credentials."""
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
 
 
 class TestStatusSemantics:
@@ -49,6 +66,10 @@ class TestAdFiltering:
     def test_planning_is_filtered(self):
         assert _is_likely_ad_or_training("2026 保研规划讲座") is True
 
+    def test_live_crawl_promotion_is_filtered(self):
+        title = "【重要】本科生保送研究生（保研）定位分析（适合大一、大二、大三提前准备规划保研的同学）"
+        assert _is_likely_ad_or_training(title) is True
+
     def test_genuine_contest_is_kept(self):
         assert _is_likely_ad_or_training("第十四届全国大学生数学竞赛报名通知") is False
 
@@ -56,9 +77,9 @@ class TestAdFiltering:
 class TestCatalogService:
     """P0: catalog + edition separation."""
 
-    def test_ministry_catalog_only(self):
+    def test_ministry_catalog_only(self, db_session):
         """Ministry directory entries should create catalog, not edition."""
-        session = SessionLocal()
+        session = db_session
         try:
             catalog = merge_catalog(session, {
                 "title": "全国大学生数学建模竞赛",
@@ -69,11 +90,11 @@ class TestCatalogService:
             assert catalog.is_ministry_approved is True
             assert catalog.normalized_title is not None
         finally:
-            session.close()
+            session.rollback()
 
-    def test_merge_event_creates_edition(self):
+    def test_merge_event_creates_edition(self, db_session):
         """Saikr/school events should create both catalog and edition."""
-        session = SessionLocal()
+        session = db_session
         try:
             future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
             edition = merge_event(session, {
@@ -97,11 +118,11 @@ class TestCatalogService:
             assert catalog is not None
             assert "全国大学生数学竞赛" in catalog.normalized_title
         finally:
-            session.close()
+            session.rollback()
 
-    def test_field_evidence_is_recorded(self):
+    def test_field_evidence_is_recorded(self, db_session):
         """Evidence records must be created for key fields."""
-        session = SessionLocal()
+        session = db_session
         try:
             future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
             event_id = f"TEST-{uuid4().hex[:8]}"
@@ -122,7 +143,25 @@ class TestCatalogService:
             assert "signup_deadline" in fields
             assert "source_url" in fields
         finally:
-            session.close()
+            session.rollback()
+
+    def test_repeated_merge_is_idempotent(self, db_session):
+        """Repeated crawls of the same edition must update instead of duplicating."""
+        payload = {
+            "title": "2027年第十五届全国大学生数学竞赛",
+            "source_name": "赛氪",
+            "source_url": "https://example.com/contest-2027",
+            "signup_deadline": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+        }
+
+        first = merge_event(db_session, payload)
+        assert first._merge_created is True
+        second = merge_event(db_session, {**payload, "summary": "补充后的简介"})
+
+        assert first.event_id == second.event_id
+        assert second._merge_created is False
+        assert db_session.query(EventEdition).count() == 1
+        assert second.summary == "补充后的简介"
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ No JS rendering required — MLH serves full HTML.
 import re
 import json
 import logging
+import time
+import html as html_lib
 from typing import List, Optional
 from datetime import datetime, timezone
 
@@ -41,17 +43,33 @@ class MLHAdapter(BaseAdapter):
                 continue
 
             events = self.parse_listing(html, url)
+            for event in events:
+                event.setdefault("season_year", year)
             logger.info("MLH season %s: %d events found", year, len(events))
 
             for ev in events:
                 c = self.normalize(ev)
-                if c is not None:
+                if c is not None and self._is_current_or_future(c, now):
                     candidates.append(c)
 
             if len(candidates) >= limit:
                 break
 
         return candidates[:limit]
+
+    @staticmethod
+    def _is_current_or_future(candidate: HackathonCandidate, now: datetime) -> bool:
+        """Drop completed events before they consume the discovery limit."""
+        boundary = candidate.event_end or candidate.event_start
+        if not boundary:
+            return True
+        try:
+            event_time = datetime.fromisoformat(boundary.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return True
+        if event_time.tzinfo is None:
+            event_time = event_time.replace(tzinfo=timezone.utc)
+        return event_time >= now
 
     def _fetch_listing_page(self, url: str) -> Optional[str]:
         """Fetch MLH listing page HTML."""
@@ -63,17 +81,25 @@ class MLHAdapter(BaseAdapter):
             ),
             "Accept": "text/html,application/xhtml+xml",
         }
-        try:
-            r = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-            if r.status_code == 200 and len(r.text) > 5000:
-                return r.text
-            logger.warning("MLH listing page returned status=%s len=%d", r.status_code, len(r.text))
-        except Exception as e:
-            logger.warning("MLH listing page fetch error: %s", e)
+        session = requests.Session()
+        for attempt in range(3):
+            try:
+                r = session.get(url, headers=headers, timeout=15, allow_redirects=True)
+                if r.status_code == 200 and len(r.text) > 5000:
+                    return r.text
+                logger.warning("MLH listing page returned status=%s len=%d", r.status_code, len(r.text))
+            except requests.RequestException as e:
+                logger.warning("MLH listing fetch attempt %d/3 failed: %s", attempt + 1, e)
+            if attempt < 2:
+                time.sleep(0.5 * (2 ** attempt))
         return None
 
     def parse_listing(self, html: str, url: str) -> List[dict]:
         """Parse MLH listing HTML into event-level candidates with raw data."""
+        structured_events = self._parse_schema_events(html, url)
+        if structured_events:
+            return structured_events
+
         events = []
 
         # Extract the events section (after "Upcoming Events")
@@ -170,6 +196,83 @@ class MLHAdapter(BaseAdapter):
 
         return event_blocks
 
+    def _parse_schema_events(self, page_html: str, listing_url: str) -> List[dict]:
+        """Parse MLH's server-rendered schema.org Event cards.
+
+        Current MLH pages expose the actual event URL and ISO start/end dates
+        in each card, so this is both more complete and less fragile than
+        scanning flattened page text.
+        """
+        anchor_pattern = re.compile(
+            r'<a\b(?=[^>]*itemType=["\']https://schema\.org/Event["\'])'
+            r'(?P<attrs>[^>]*)>(?P<body>.*?)</a>',
+            re.IGNORECASE | re.DOTALL,
+        )
+
+        def attr(fragment: str, name: str) -> str:
+            match = re.search(
+                rf'\b{re.escape(name)}=["\']([^"\']*)["\']',
+                fragment,
+                re.IGNORECASE,
+            )
+            return html_lib.unescape(match.group(1)).strip() if match else ""
+
+        events: List[dict] = []
+        for match in anchor_pattern.finditer(page_html):
+            attrs = match.group("attrs")
+            body = match.group("body")
+            href = attr(attrs, "href")
+            metadata = {}
+            for meta_tag in re.findall(r"<meta\b[^>]*>", body, re.IGNORECASE):
+                prop = attr(meta_tag, "itemProp")
+                content = attr(meta_tag, "content")
+                if prop and content:
+                    metadata[prop] = content
+
+            title_match = re.search(
+                r"<h[1-6][^>]*>(.*?)</h[1-6]>", body, re.IGNORECASE | re.DOTALL
+            )
+            title = ""
+            if title_match:
+                title = re.sub(r"<[^>]+>", "", title_match.group(1))
+                title = html_lib.unescape(title).strip()
+            if not title:
+                continue
+
+            location_match = re.search(
+                r'<span[^>]*itemProp=["\']name["\'][^>]*>(.*?)</span>',
+                body,
+                re.IGNORECASE | re.DOTALL,
+            )
+            location = ""
+            if location_match:
+                location = re.sub(r"<[^>]+>", "", location_match.group(1))
+                location = html_lib.unescape(location).strip()
+
+            attendance = metadata.get("eventAttendanceMode", "").lower()
+            if "online" in attendance:
+                mode = "online"
+            elif "mixed" in attendance or "hybrid" in attendance:
+                mode = "hybrid"
+            elif "offline" in attendance:
+                mode = "offline"
+            else:
+                mode = None
+
+            canonical_url = metadata.get("url") or href or listing_url
+            events.append({
+                "title": title,
+                "source_url": canonical_url,
+                "source_name": "MLH",
+                "event_start": metadata.get("startDate"),
+                "event_end": metadata.get("endDate"),
+                "location": location,
+                "mode": mode,
+                "platform_id": canonical_url,
+            })
+
+        return events
+
     def normalize(self, raw: dict) -> Optional[HackathonCandidate]:
         """Normalize MLH event block to HackathonCandidate."""
         title = raw.get("title", "").strip()
@@ -189,10 +292,14 @@ class MLHAdapter(BaseAdapter):
         date_text = raw.get("date_text", "")
 
         # Parse date
-        event_start = None
-        event_end = None
+        event_start = raw.get("event_start")
+        event_end = raw.get("event_end")
         if date_text:
-            event_start, event_end = self._parse_mlh_date(date_text)
+            parsed_start, parsed_end = self._parse_mlh_date(
+                date_text, year=raw.get("season_year")
+            )
+            event_start = event_start or parsed_start
+            event_end = event_end or parsed_end
 
         tags = ["黑客松"]
         if mode and mode != "unknown":
@@ -218,15 +325,16 @@ class MLHAdapter(BaseAdapter):
             source_authority="high",
             raw_date_text=date_text,
             extraction_method="html_parse",
+            platform_id=raw.get("platform_id"),
         )
 
-    def _parse_mlh_date(self, date_text: str):
+    def _parse_mlh_date(self, date_text: str, year: Optional[int] = None):
         """Parse MLH date format like 'JUL 17 - 19' into (start_dt, end_dt).
 
         Uses current year since MLH season page is for a specific year.
         """
         now = datetime.now(timezone.utc)
-        year = now.year
+        year = int(year or now.year)
 
         # JUL 17 - 19
         m = re.match(

@@ -96,8 +96,143 @@ class TestHackathonCandidateContract:
         assert json.loads(event["tags"]) == ["黑客松", "线上"]
         assert candidate.tags == ["黑客松"]
 
+    def test_distinct_events_sharing_listing_url_are_not_deduplicated(self):
+        from tools.hackathon_adapters.base import HackathonCandidate
+        from tools.hackathon_sync import _dedup_candidates_v2
+
+        listing_url = "https://mlh.io/seasons/2027/events"
+        candidates = [
+            HackathonCandidate(
+                title="Alpha Hack",
+                source_name="MLH",
+                source_url=listing_url,
+                event_start="2027-01-10T00:00:00Z",
+                discovered_from="mlh_listing",
+            ),
+            HackathonCandidate(
+                title="Beta Hack",
+                source_name="MLH",
+                source_url=listing_url,
+                event_start="2027-02-10T00:00:00Z",
+                discovered_from="mlh_listing",
+            ),
+        ]
+
+        assert _dedup_candidates_v2(candidates) == candidates
+
+    def test_global_limit_is_round_robin_across_sources(self):
+        from tools.hackathon_adapters.base import HackathonCandidate
+        from tools.hackathon_sync import _limit_candidates_round_robin
+
+        candidates = [
+            HackathonCandidate(
+                title=f"MLH {index}",
+                source_name="MLH",
+                source_url=f"https://example.com/mlh/{index}",
+                discovered_from="mlh_listing",
+            )
+            for index in range(5)
+        ] + [
+            HackathonCandidate(
+                title=f"HackClub {index}",
+                source_name="HackClub",
+                source_url=f"https://example.com/hackclub/{index}",
+                discovered_from="hackclub_listing",
+            )
+            for index in range(5)
+        ]
+
+        selected, truncated = _limit_candidates_round_robin(candidates, 4)
+
+        assert [candidate.source_name for candidate in selected] == [
+            "MLH", "HackClub", "MLH", "HackClub"
+        ]
+        assert truncated == {"mlh": 3, "hackclub": 3}
+
 
 class TestHackathonSyncDryRun:
+    @patch("tools.hackathon_adapters.hackclub.HackClubAdapter.discover")
+    @patch("tools.hackathon_sync.fetch_detail_page")
+    def test_detail_page_title_is_backfilled_before_acceptance(
+        self, mock_fetch, mock_discover
+    ):
+        from tools.hackathon_adapters.base import HackathonCandidate
+        from tools.hackathon_sync import run_hackathon_sync
+        from coze_coding_utils.runtime_ctx.context import new_context
+
+        mock_discover.return_value = [
+            HackathonCandidate(
+                title="",
+                source_name="HackClub",
+                source_url="https://banana.example/",
+                discovered_from="hackclub_listing",
+                source_authority="medium",
+            )
+        ]
+        mock_fetch.return_value = """
+            <html><head><title>Banana Hacks 2026</title></head>
+            <body>Banana Hacks is a student hackathon. Registration is open.
+            Event starts: 2026-10-09.</body></html>
+        """
+
+        stats = run_hackathon_sync(
+            ctx=new_context(method="test_title_backfill"),
+            dry_run=True,
+            now=datetime(2026, 7, 21, tzinfo=timezone.utc),
+            sources=["hackclub"],
+            limit=10,
+        )
+
+        assert stats["accepted"] == 1
+        assert stats["accepted_samples"][0]["title"] == "Banana Hacks 2026"
+        assert stats["accepted_records"][0]["title"] == "Banana Hacks 2026"
+        assert stats["sources"]["hackclub"]["accepted"] == 1
+
+    @patch("tools.hackathon_adapters.mlh.MLHAdapter.discover")
+    @patch("tools.hackathon_sync.fetch_detail_page")
+    def test_structured_listing_events_are_validated_without_refetch(
+        self, mock_fetch, mock_discover
+    ):
+        from tools.hackathon_adapters.base import HackathonCandidate
+        from tools.hackathon_sync import run_hackathon_sync
+        from coze_coding_utils.runtime_ctx.context import new_context
+
+        listing_url = "https://mlh.io/seasons/2026/events"
+        mock_discover.return_value = [
+            HackathonCandidate(
+                title="Alpha Hackathon",
+                source_name="MLH",
+                source_url=listing_url,
+                event_start="2026-08-01T00:00:00Z",
+                event_end="2026-08-02T00:00:00Z",
+                source_authority="high",
+                discovered_from="mlh_listing",
+            ),
+            HackathonCandidate(
+                title="Beta Hackathon",
+                source_name="MLH",
+                source_url=listing_url,
+                event_start="2026-09-01T00:00:00Z",
+                event_end="2026-09-02T00:00:00Z",
+                source_authority="high",
+                discovered_from="mlh_listing",
+            ),
+        ]
+
+        stats = run_hackathon_sync(
+            ctx=new_context(method="test_structured_listing"),
+            dry_run=True,
+            now=datetime(2026, 7, 20, tzinfo=timezone.utc),
+            sources=["mlh"],
+            limit=20,
+        )
+
+        mock_discover.assert_called_once()
+        assert mock_discover.call_args.kwargs["limit"] == 20
+        mock_fetch.assert_not_called()
+        assert stats["accepted"] == 2
+        assert stats["sources"]["mlh"]["structured_candidates"] == 2
+
     @patch("tools.hackathon_adapters.general_search.GeneralSearchAdapter.discover")
     @patch("tools.hackathon_sync.fetch_detail_page")
     def test_dry_run_no_db_write(self, mock_fetch, mock_discover):

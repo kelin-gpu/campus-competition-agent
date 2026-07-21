@@ -73,6 +73,8 @@ def _per_source_stats_template() -> dict:
         "listing_items_found": 0,
         "search_results_found": 0,
         "prefetch_duplicates": 0,
+        "truncated_by_limit": 0,
+        "structured_candidates": 0,
         "detail_candidates": 0,
         "details_fetched": 0,
         "parse_success": 0,
@@ -121,7 +123,10 @@ def run_hackathon_sync(
 
     cfg = _load_sources_config()
     max_future_days = cfg.get("max_future_days", HACKATHON_MAX_FUTURE_DAYS)
-    search_limit = int(os.getenv("HACKATHON_SEARCH_LIMIT", str(limit or HACKATHON_SEARCH_LIMIT)))
+    search_limit = max(
+        1,
+        int(os.getenv("HACKATHON_SEARCH_LIMIT", str(limit or HACKATHON_SEARCH_LIMIT))),
+    )
 
     logger.info("=== Hackathon sync v2 started ===")
 
@@ -136,9 +141,11 @@ def run_hackathon_sync(
         if src_name not in _ADAPTERS:
             continue
         adapter = _ADAPTERS[src_name]
-        per_source_limit = max(1, (search_limit or 60) // len(source_names))
         try:
-            candidates = adapter.discover(ctx, limit=per_source_limit)
+            # ``limit`` is a global processing cap.  Dividing it by the number
+            # of adapters starved productive sources (for example MLH returned
+            # only four of sixteen events when the global limit was twenty).
+            candidates = adapter.discover(ctx, limit=search_limit)
         except Exception as e:
             logger.warning(f"Source {src_name} discovery failed: {e}")
             per_source_stats[src_name]["errors"] += 1
@@ -156,11 +163,19 @@ def run_hackathon_sync(
     logger.info(f"Phase 1: {total_discovered} candidates from {len(source_names)} sources")
 
     # Phase 2: Pre-fetch dedup
-    all_candidates = _dedup_candidates_v2(all_candidates)
+    all_candidates, dedup_by_source = _dedup_candidates_with_stats(all_candidates)
     prefetch_dup = total_discovered - len(all_candidates)
-    # Distribute dedup count evenly across sources
-    for stats in per_source_stats.values():
-        stats["prefetch_duplicates"] += prefetch_dup // len(per_source_stats)
+    for src_name, count in dedup_by_source.items():
+        per_source_stats[src_name]["prefetch_duplicates"] += count
+
+    # Apply the global cap only after all sources have had a chance to
+    # discover and de-duplicate. Round-robin selection avoids source-order
+    # bias while still keeping network work bounded.
+    all_candidates, truncated_by_source = _limit_candidates_round_robin(
+        all_candidates, search_limit
+    )
+    for src_name, count in truncated_by_source.items():
+        per_source_stats[src_name]["truncated_by_limit"] += count
 
     logger.info(f"Phase 2: {len(all_candidates)} after pre-fetch dedup")
 
@@ -170,8 +185,19 @@ def run_hackathon_sync(
     details_list: List[dict] = []
 
     # Separate listing page candidates from detail page candidates
-    listing_candidates = [c for c in all_candidates if _is_listing_url(c.source_url or "")]
-    detail_candidates = [c for c in all_candidates if not _is_listing_url(c.source_url or "")]
+    structured_candidates = [c for c in all_candidates if _is_structured_listing_candidate(c)]
+    structured_candidate_ids = {id(c) for c in structured_candidates}
+    listing_candidates = [
+        c for c in all_candidates
+        if _is_listing_url(c.source_url or "") and id(c) not in structured_candidate_ids
+    ]
+    detail_candidates = [
+        c for c in all_candidates
+        if not _is_listing_url(c.source_url or "") and id(c) not in structured_candidate_ids
+    ]
+    detail_candidates.extend(structured_candidates)
+    for candidate in structured_candidates:
+        per_source_stats[_candidate_source_key(candidate)]["structured_candidates"] += 1
 
     # Expand listing pages
     for lc in listing_candidates:
@@ -183,7 +209,12 @@ def run_hackathon_sync(
             if html:
                 per_source_stats[src_name]["listing_pages_fetched"] += 1
                 sub_candidates = adapter.parse_listing(html, lc.source_url or "")
-                for sc in sub_candidates:
+                for raw_candidate in sub_candidates:
+                    sc = raw_candidate
+                    if isinstance(raw_candidate, dict):
+                        sc = adapter.normalize(raw_candidate)
+                    if not isinstance(sc, HackathonCandidate):
+                        continue
                     sc.discovered_from = f"{src_name}_listing"
                     detail_candidates.append(sc)
 
@@ -196,55 +227,89 @@ def run_hackathon_sync(
         if not url:
             continue
 
-        src_name = _detect_source(url) or "unknown"
+        src_name = _candidate_source_key(cand)
         per_source_stats[src_name]["detail_candidates"] += 1
 
-        rate_limiter.wait(url)
-        html = fetch_detail_page(url, timeout=_FETCH_TIMEOUT, retries=_FETCH_RETRIES)
-
-        if html is None:
-            per_source_stats[src_name]["parse_failed"] += 1
-            details_list.append({"action": "fetch_failed", "title": cand.title, "source_url": url})
-            continue
-
-        per_source_stats[src_name]["details_fetched"] += 1
-
-        # Check if it's a hackathon (non-listing-page check)
-        text = _strip_html_tags(html)
-        if not is_hackathon_page(cand.title or _extract_title(html), text):
-            per_source_stats[src_name]["not_hackathon"] += 1
-            details_list.append({"action": "not_hackathon", "title": cand.title, "source_url": url})
-            continue
-
-        # Parse detail page
-        if src_name in _ADAPTERS:
-            parsed = _ADAPTERS[src_name].parse_detail(html, url)
-        else:
-            parsed = None
-
-        if parsed:
-            # parsed may be a dict (from adapter) or HackathonCandidate
-            if isinstance(parsed, HackathonCandidate):
-                cand = parsed
-            else:
-                # Merge dict values into existing candidate
-                _merge_parsed(cand, parsed)
+        if _is_structured_listing_candidate(cand):
+            # High/medium-authority platform listings already contain an
+            # event-level title and timeline. Validate those fields directly;
+            # re-fetching the shared listing URL used to collapse all events.
+            signup_deadline = cand.signup_deadline
+            event_start = cand.event_start
+            event_end = cand.event_end
+            reg_status = (
+                _normalize_registration_status(cand.registration_status)
+                or ("upcoming" if event_start else None)
+            )
             per_source_stats[src_name]["parse_success"] += 1
         else:
-            # Use generic HTML parsing
-            cand = _parse_generic_detail(cand, html, text)
+            rate_limiter.wait(url)
+            html = fetch_detail_page(url, timeout=_FETCH_TIMEOUT, retries=_FETCH_RETRIES)
 
-        # Extract dates with context-aware parser
-        dates = parse_dates_contextual(text)
-        range_dates = parse_date_ranges(text)
+            if html is None:
+                per_source_stats[src_name]["parse_failed"] += 1
+                details_list.append({"action": "fetch_failed", "title": cand.title, "source_url": url})
+                continue
 
-        # Merge: range dates take precedence if found
-        signup_deadline = range_dates.get("signup_deadline") or dates.get("signup_deadline")
-        event_start = range_dates.get("event_start") or dates.get("event_start")
-        event_end = range_dates.get("event_end") or dates.get("event_end")
+            per_source_stats[src_name]["details_fetched"] += 1
 
-        # Detect registration status
-        reg_status = detect_registration_status_v2(text) or detect_registration_status(text)
+            # Check if it's a hackathon (non-listing-page check). Search/list
+            # discovery can provide a URL without a title, so retain the page
+            # title before generic parsing and final validation.
+            text = _strip_html_tags(html)
+            page_title = _extract_title(html)
+            if not cand.title and page_title:
+                cand.title = page_title
+            if not is_hackathon_page(cand.title or page_title, text):
+                per_source_stats[src_name]["not_hackathon"] += 1
+                details_list.append({"action": "not_hackathon", "title": cand.title, "source_url": url})
+                continue
+
+            # Parse detail page
+            if src_name in _ADAPTERS:
+                parsed = _ADAPTERS[src_name].parse_detail(html, url)
+            else:
+                parsed = None
+
+            if parsed:
+                # parsed may be a dict (from adapter) or HackathonCandidate
+                if isinstance(parsed, HackathonCandidate):
+                    cand = parsed
+                else:
+                    # Merge dict values into existing candidate
+                    _merge_parsed(cand, parsed)
+                per_source_stats[src_name]["parse_success"] += 1
+            else:
+                # Use generic HTML parsing
+                cand = _parse_generic_detail(cand, html, text)
+
+            # Extract dates with context-aware parser. Structured discovery
+            # values are authoritative fallbacks when a detail page omits one.
+            dates = parse_dates_contextual(text)
+            range_dates = parse_date_ranges(text)
+            signup_deadline = (
+                range_dates.get("signup_deadline")
+                or dates.get("signup_deadline")
+                or cand.signup_deadline
+            )
+            event_start = (
+                range_dates.get("event_start")
+                or dates.get("event_start")
+                or cand.event_start
+            )
+            event_end = (
+                range_dates.get("event_end")
+                or dates.get("event_end")
+                or cand.event_end
+            )
+
+            # Detect registration status, keeping an adapter's explicit value
+            # as a fallback.
+            reg_status = (
+                detect_registration_status_v2(text)
+                or detect_registration_status(text)
+                or _normalize_registration_status(cand.registration_status)
+            )
 
         # Detect open/upcoming/closed
         if reg_status == "open":
@@ -254,7 +319,12 @@ def run_hackathon_sync(
 
         # Filter by time
         accepted, reason = filter_event_by_time(
-            signup_deadline, event_start, reg_status, now=now, max_future_days=max_future_days
+            signup_deadline,
+            event_start,
+            reg_status,
+            now=now,
+            max_future_days=max_future_days,
+            event_end_str=event_end,
         )
 
         detail_entry = {
@@ -264,6 +334,7 @@ def run_hackathon_sync(
             "source": src_name,
             "deadline": signup_deadline,
             "event_start": event_start,
+            "event_end": event_end,
             "reg_status": reg_status,
         }
 
@@ -279,15 +350,25 @@ def run_hackathon_sync(
         cand.registration_status = reg_status
         cand.extraction_method = "contextual_date_parse"
 
+        if not (cand.title or "").strip():
+            per_source_stats[src_name]["parse_failed"] += 1
+            detail_entry["action"] = "missing_title_filtered"
+            details_list.append(detail_entry)
+            continue
+
         accepted_candidates.append(cand)
         per_source_stats[src_name]["accepted"] += 1
 
     # Phase 4: Post-parse dedup across sources
-    before = len(accepted_candidates)
-    accepted_candidates = _cross_source_dedup(accepted_candidates)
-    post_dup = before - len(accepted_candidates)
+    accepted_candidates, post_duplicates = _cross_source_dedup_with_stats(accepted_candidates)
+    for src_name, count in post_duplicates.items():
+        per_source_stats[src_name]["postparse_duplicates"] += count
+    # ``accepted`` represents the final post-dedup rows, not the provisional
+    # pre-dedup count from the parsing loop.
     for stats in per_source_stats.values():
-        stats["postparse_duplicates"] += post_dup // max(1, len(per_source_stats))
+        stats["accepted"] = 0
+    for candidate in accepted_candidates:
+        per_source_stats[_candidate_source_key(candidate)]["accepted"] += 1
 
     # Phase 5: Write to DB
     if not dry_run and accepted_candidates:
@@ -311,6 +392,7 @@ def run_hackathon_sync(
     result = {
         "discovered": total_discovered,
         "prefetch_duplicates": prefetch_dup,
+        "truncated_by_limit": sum(truncated_by_source.values()),
         "detail_page_candidates": len(detail_candidates),
         "accepted": total_accepted,
         "added": total_added,
@@ -318,19 +400,26 @@ def run_hackathon_sync(
         "details": details_list,
     }
 
-    # In dry-run mode, include accepted samples
+    # In dry-run mode, include the complete accepted dataset for audit/export,
+    # plus a compact sample retained for backward-compatible CLI display.
     if dry_run and accepted_candidates:
-        result["accepted_samples"] = [
+        result["accepted_records"] = [
             {
                 "title": c.title,
                 "source_url": c.source_url,
                 "source_name": c.source_name,
                 "signup_deadline": c.signup_deadline,
                 "event_start": c.event_start,
+                "event_end": c.event_end,
                 "registration_status": c.registration_status,
+                "organizer": c.organizer,
+                "location": c.location,
+                "mode": c.mode,
+                "tags": list(c.tags or []),
             }
-            for c in accepted_candidates[:20]
+            for c in accepted_candidates
         ]
+        result["accepted_samples"] = result["accepted_records"][:20]
 
     logger.info(f"Hackathon sync complete: {total_discovered} discovered, "
                 f"{total_accepted} accepted, {total_added} added")
@@ -359,7 +448,7 @@ def _detect_source(url: str) -> str:
     domain = urlparse(url).netloc.lower()
     if "devfolio" in domain:
         return "devfolio"
-    if "mlh.io" in domain:
+    if "mlh.io" in domain or "mlh.com" in domain:
         return "mlh"
     if "hackclub" in domain or "hackathons.hackclub" in domain:
         return "hackclub"
@@ -368,50 +457,170 @@ def _detect_source(url: str) -> str:
     return "general_search"
 
 
+def _candidate_source_key(candidate: HackathonCandidate) -> str:
+    """Return the adapter key that originally discovered a candidate."""
+    discovered_from = (candidate.discovered_from or "").lower()
+    source_name = (candidate.source_name or "").lower()
+    for key in _ADAPTERS:
+        if discovered_from.startswith(key) or source_name == key:
+            return key
+    if "websearch" in source_name or "general" in discovered_from:
+        return "general_search"
+    if "hackclub" in source_name:
+        return "hackclub"
+    if "devfolio" in source_name:
+        return "devfolio"
+    if "devpost" in source_name:
+        return "devpost"
+    if source_name == "mlh":
+        return "mlh"
+    return _detect_source(candidate.source_url or "") or "unknown"
+
+
+def _is_structured_listing_candidate(candidate: HackathonCandidate) -> bool:
+    """Whether platform discovery supplied enough authoritative data to filter.
+
+    A dated event from an authoritative platform listing is already an
+    event-level record even when several records share the listing page URL.
+    """
+    return bool(
+        candidate.title.strip()
+        and (candidate.event_start or candidate.event_end or candidate.signup_deadline)
+        and candidate.source_authority in {"high", "medium"}
+    )
+
+
+def _normalize_registration_status(value: Optional[str]) -> Optional[str]:
+    normalized = (value or "").strip().lower()
+    status_map = {
+        "open": "open",
+        "live": "open",
+        "registration": "open",
+        "upcoming": "upcoming",
+        "closed": "closed",
+        "ended": "ended",
+    }
+    return status_map.get(normalized)
+
+
 def _dedup_candidates_v2(candidates: List[HackathonCandidate]) -> List[HackathonCandidate]:
-    """Deduplicate HackathonCandidates by URL then by title."""
-    seen_urls: set = set()
-    seen_titles: set = set()
+    """Deduplicate without collapsing events that share a platform listing URL."""
+    result, _ = _dedup_candidates_with_stats(candidates)
+    return result
+
+
+def _dedup_candidates_with_stats(
+    candidates: List[HackathonCandidate],
+) -> tuple[List[HackathonCandidate], Dict[str, int]]:
+    """Deduplicate candidates and attribute each dropped row to its source."""
+    seen_identities: set = set()
     result: List[HackathonCandidate] = []
+    dropped: Dict[str, int] = defaultdict(int)
 
     for c in candidates:
         url = c.source_url or ""
         norm_url = _normalize_url(url)
-        if norm_url and norm_url in seen_urls:
+        norm_title = _normalize_title_light(c.title or "")
+        source_key = _candidate_source_key(c)
+
+        if c.platform_id:
+            identity = ("platform", source_key, c.platform_id)
+        elif norm_url and not _is_listing_url(url):
+            identity = ("url", norm_url)
+        elif norm_title:
+            # Listing pages legitimately contain many events under one URL.
+            # The date disambiguates recurring editions with the same title.
+            identity = (
+                "listing_event",
+                source_key,
+                norm_title,
+                (c.event_start or c.signup_deadline or c.event_end or "")[:10],
+            )
+        else:
+            identity = ("listing_url", source_key, norm_url)
+
+        if identity in seen_identities:
+            dropped[source_key] += 1
             continue
-        if norm_url:
-            seen_urls.add(norm_url)
-        title = c.title or ""
-        norm_title = _normalize_title_light(title)
-        if norm_title and norm_title in seen_titles:
-            continue
-        if norm_title:
-            seen_titles.add(norm_title)
+        seen_identities.add(identity)
         result.append(c)
 
-    return result
+    return result, dict(dropped)
+
+
+def _limit_candidates_round_robin(
+    candidates: List[HackathonCandidate], limit: int
+) -> tuple[List[HackathonCandidate], Dict[str, int]]:
+    """Apply a global cap while preserving representation from every source."""
+    if len(candidates) <= limit:
+        return candidates, {}
+
+    grouped: Dict[str, List[HackathonCandidate]] = {}
+    source_order: List[str] = []
+    for candidate in candidates:
+        source_key = _candidate_source_key(candidate)
+        if source_key not in grouped:
+            grouped[source_key] = []
+            source_order.append(source_key)
+        grouped[source_key].append(candidate)
+
+    selected: List[HackathonCandidate] = []
+    positions = {source: 0 for source in source_order}
+    while len(selected) < limit:
+        progressed = False
+        for source in source_order:
+            pos = positions[source]
+            if pos >= len(grouped[source]):
+                continue
+            selected.append(grouped[source][pos])
+            positions[source] += 1
+            progressed = True
+            if len(selected) >= limit:
+                break
+        if not progressed:
+            break
+
+    truncated = {
+        source: len(items) - positions[source]
+        for source, items in grouped.items()
+        if len(items) > positions[source]
+    }
+    return selected, truncated
 
 
 def _cross_source_dedup(candidates: List[HackathonCandidate]) -> List[HackathonCandidate]:
     """Deduplicate across sources: same event on multiple platforms."""
+    result, _ = _cross_source_dedup_with_stats(candidates)
+    return result
+
+
+def _cross_source_dedup_with_stats(
+    candidates: List[HackathonCandidate],
+) -> tuple[List[HackathonCandidate], Dict[str, int]]:
+    """Cross-source de-duplication with accurate source attribution."""
     result: List[HackathonCandidate] = []
     seen_titles: set = set()
     seen_platform_ids: set = set()
+    dropped: Dict[str, int] = defaultdict(int)
 
     for c in candidates:
+        source_key = _candidate_source_key(c)
         pid = getattr(c, "platform_id", None)
         if pid and pid in seen_platform_ids:
+            dropped[source_key] += 1
             continue
         if pid:
             seen_platform_ids.add(pid)
 
         title = _normalize_title_light(c.title or "")
-        if title in seen_titles:
+        if title and title in seen_titles:
+            dropped[source_key] += 1
             continue
-        seen_titles.add(title)
+        if title:
+            seen_titles.add(title)
         result.append(c)
 
-    return result
+    return result, dict(dropped)
 
 
 def _merge_parsed(cand: HackathonCandidate, parsed: dict):

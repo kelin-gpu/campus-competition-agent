@@ -1,5 +1,7 @@
 # 数据模型 v2 迁移说明
 
+PostgreSQL 建表和索引脚本位于 `docs/migrations/001_catalog_v2.sql`。执行前请备份数据库；脚本不会覆盖已经存在的 `event_info` 关系。
+
 ## 变更原因
 
 旧模型使用单表 `event_info` 同时存储：
@@ -86,7 +88,7 @@ JOIN competition_catalog c ON e.catalog_id = c.catalog_id;
 | 报名中 | 有未过期报名截止时间 |
 | 即将截止 | 3 天内截止 |
 | 已截止 | 报名截止时间已过 |
-| 暂无本届信息 | 目录认可但无本届通知/DLL |
+| 暂无本届信息 | 目录认可但无本届通知/DDL |
 | 待确认 | 有数据但无法判断状态 |
 
 ## 后续待完成

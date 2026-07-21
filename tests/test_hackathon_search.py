@@ -80,6 +80,23 @@ class TestNormalizeURL:
         assert _normalize_url("https://devpost.com/") == "devpost.com/"
 
 
+class TestFetchDetailPage:
+    @patch("tools.hackathon_search.requests.get")
+    def test_preserves_html_for_structured_parsers(self, mock_get):
+        from tools.hackathon_search import fetch_detail_page
+
+        response = MagicMock()
+        response.status_code = 200
+        response.content = b"<html><head><title>Alpha Hack</title></head><body>Hackathon</body></html>"
+        response.encoding = "utf-8"
+        response.apparent_encoding = "utf-8"
+        mock_get.return_value = response
+
+        result = fetch_detail_page("https://example.com/hackathon")
+
+        assert "<title>Alpha Hack</title>" in result
+
+
 class TestIsHackathonPage:
     def test_hackathon_title_identified(self):
         assert is_hackathon_page("AI Hackathon 2026", "Join our hackathon this summer!") is True
@@ -176,6 +193,31 @@ class TestFilterByTime:
             None, "2026-08-01", "open", now=self._now()
         )
         assert accepted is True
+
+    def test_upcoming_authoritative_event_without_deadline_accepted(self):
+        accepted, reason = filter_event_by_time(
+            None, "2026-08-01", "upcoming", now=self._now()
+        )
+        assert accepted is True
+        assert reason == "accepted"
+
+    def test_stale_open_label_does_not_revive_past_event(self):
+        accepted, reason = filter_event_by_time(
+            None, "2026-06-01", "open", now=self._now()
+        )
+        assert accepted is False
+        assert reason == "event_passed_filtered"
+
+    def test_explicit_ongoing_event_is_accepted(self):
+        accepted, reason = filter_event_by_time(
+            None,
+            "2026-06-01",
+            "open",
+            now=self._now(),
+            event_end_str="2026-07-10",
+        )
+        assert accepted is True
+        assert reason == "accepted"
 
     def test_no_time_no_status_unverified(self):
         accepted, reason = filter_event_by_time(

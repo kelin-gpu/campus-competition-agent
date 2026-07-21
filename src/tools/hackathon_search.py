@@ -20,6 +20,7 @@ import re
 import time
 import hashlib
 import ipaddress
+import html as html_lib
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -359,7 +360,12 @@ def extract_dates(text: str, now: Optional[datetime] = None) -> dict:
 
 # ─── 网页抓取 ───
 def fetch_detail_page(url: str, timeout: int = 15, retries: int = 2) -> Optional[str]:
-    """Fetch a page and return its text content. Returns None on failure."""
+    """Fetch a page and return decoded HTML. Returns None on failure.
+
+    Callers need the original markup for ``<title>``, JSON-LD and
+    platform-specific detail parsing. They can derive visible text with
+    :func:`_strip_html_tags` after structured extraction.
+    """
     cfg = _load_sources_config()
     if not _is_safe_url(url):
         logger.warning(f"Blocked unsafe URL: {url[:80]}")
@@ -398,8 +404,6 @@ def fetch_detail_page(url: str, timeout: int = 15, retries: int = 2) -> Optional
             except Exception:
                 text = content.decode("utf-8", errors="replace")
 
-            # Strip tags
-            text = _strip_html_tags(text)
             return text[:8192]
 
         except requests.Timeout:
@@ -416,10 +420,12 @@ def _extract_title(text: str) -> str:
     """Extract title from HTML text (first h1 or document title)."""
     m = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.DOTALL)
     if m:
-        return re.sub(r"\s+", " ", m.group(1)).strip()[:200]
+        return html_lib.unescape(re.sub(r"\s+", " ", m.group(1))).strip()[:200]
     m = re.search(r"<h1[^>]*>(.*?)</h1>", text, re.I | re.DOTALL)
     if m:
-        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m.group(1))).strip()[:200]
+        return html_lib.unescape(
+            re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m.group(1)))
+        ).strip()[:200]
     return ""
 
 
@@ -483,6 +489,7 @@ def filter_event_by_time(
     reg_status: Optional[str],
     now: Optional[datetime] = None,
     max_future_days: int = 400,
+    event_end_str: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """Decide if an event should be accepted based on time/rules.
 
@@ -507,33 +514,51 @@ def filter_event_by_time(
 
     # 2. Signup deadline already passed
     deadline_dt = _to_utc_dt(signup_deadline, end_of_day=True)
+    event_end_dt = _to_utc_dt(event_end_str, end_of_day=True)
     if deadline_dt is not None and deadline_dt < now:
         return False, "expired_filtered"
 
-    # 3. Event time already passed AND no open registration evidence
+    # 3. A past start requires an explicit, still-future end time. An "open"
+    # label alone is often stale and must not revive an already-finished event.
     event_dt = _to_utc_dt(event_time_str)
-    if event_dt is not None and event_dt < now and reg_status != "open":
-        return False, "event_passed_filtered"
+    if event_dt is not None and event_dt < now:
+        if not (reg_status == "open" and event_end_dt is not None and event_end_dt >= now):
+            return False, "event_passed_filtered"
 
     # 4. Both dates too far in future
     if deadline_dt is not None and deadline_dt > future_limit:
         return False, "too_far_future_filtered"
     if event_dt is not None and event_dt > future_limit:
         return False, "too_far_future_filtered"
+    if event_end_dt is not None and event_end_dt > future_limit:
+        return False, "too_far_future_filtered"
 
     # 5. Timeline conflict: event_time < signup_deadline
     if deadline_dt is not None and event_dt is not None and event_dt < deadline_dt:
+        return False, "invalid_date_filtered"
+    if event_dt is not None and event_end_dt is not None and event_end_dt < event_dt:
         return False, "invalid_date_filtered"
 
     # 6. No deadline, no event time, no status → can't verify
     if deadline_dt is None and event_dt is None and reg_status is None:
         return False, "unverified_skipped"
 
-    # 7. No deadline but event is open → allow (even if already started)
-    if deadline_dt is None and reg_status == "open":
-        if event_dt is None or event_dt > now:
-            return True, "accepted"
-        # Event started but registration still open (ongoing hackathon)
+    # 7. No deadline but an authoritative listing says the event is open or
+    # upcoming and it has not started → retain it. Upcoming events remain
+    # useful even when registration details have not been published yet.
+    if (
+        deadline_dt is None
+        and reg_status == "open"
+        and event_end_dt is not None
+        and event_end_dt >= now
+    ):
+        return True, "accepted"
+    if (
+        deadline_dt is None
+        and reg_status in {"open", "upcoming"}
+        and event_dt is not None
+        and event_dt >= now
+    ):
         return True, "accepted"
 
     # 8. Has valid future deadline → accept

@@ -6,17 +6,11 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from langchain.tools import tool
-from postgrest.exceptions import APIError
 from coze_coding_utils.log.write_log import request_context
 from coze_coding_utils.runtime_ctx.context import new_context
+from tools.event_schema import event_db_payload, normalize_event_times
 
 logger = logging.getLogger(__name__)
-
-
-def _get_client():
-    """获取 Supabase 客户端"""
-    from storage.database.supabase_client import get_supabase_client
-    return get_supabase_client()
 
 
 def _fetch_url_content(url: str) -> str:
@@ -150,47 +144,13 @@ def _extract_structured_info(text: str, source_url: Optional[str] = None) -> dic
     return info
 
 
-def _insert_event(event_data: dict) -> str:
-    """插入事件到数据库（普通函数）"""
-    ctx = request_context.get() or new_context(method="insert_event")
-    client = _get_client()
-
-    # 时间线校验：event_time 不能早于 signup_deadline
-    deadline = event_data.get("signup_deadline")
-    event_time = event_data.get("event_time")
-    if deadline and event_time:
-        try:
-            from datetime import timezone
-            dl = datetime.fromisoformat(str(deadline).replace("+08:00", "+08:00"))
-            et = datetime.fromisoformat(str(event_time).replace("+08:00", "+08:00"))
-            if et < dl:
-                logger.warning(
-                    f"Timeline conflict in parsed event: event_time({event_time}) < "
-                    f"signup_deadline({deadline}) — clearing event_time"
-                )
-                event_data["event_time"] = None
-        except Exception:
-            pass
-
-    try:
-        response = client.table("event_info").insert(event_data).execute()
-        data = response.data
-        if data and isinstance(data, list) and len(data) > 0:
-            first = data[0]
-            if isinstance(first, dict):
-                return str(first.get("event_id", "unknown"))
-        return "unknown"
-    except APIError as e:
-        logger.error(f"插入事件失败: {e.message}")
-        raise Exception(f"插入失败: {e.message}")
-
-
 @tool
-def parse_and_save_notification(input_text: str, source_url: Optional[str] = None) -> str:
-    """解析竞赛/活动通知（链接或文本），提取结构化信息并存入数据库。
+def parse_notification(input_text: str, source_url: Optional[str] = None) -> str:
+    """解析竞赛/活动通知（链接或文本），返回结构化预览但不写数据库。
 
     当用户提供一个竞赛/活动链接或通知文本时，使用此工具自动提取标题、类型、简介、
-    报名时间、比赛时间、适合对象、主办方、级别、标签等字段，并存入数据库。
+    报名时间、比赛时间、适合对象、主办方、级别、标签等字段。结果仅供预览，
+    不会直接进入公共赛事数据库。
 
     Args:
         input_text: 通知文本内容，或者一个URL链接。如果是URL，会自动抓取页面内容后解析。
@@ -211,45 +171,15 @@ def parse_and_save_notification(input_text: str, source_url: Optional[str] = Non
                 logger.warning(f"抓取URL失败: {e}，将直接解析URL文本")
                 text_content = input_text
 
-        # 提取结构化信息
-        event_data = _extract_structured_info(text_content, actual_url)
-
-        # 去重检查：按标题模糊匹配
-        client = _get_client()
-        try:
-            existing = client.table("event_info").select("event_id,title").ilike(
-                "title", f"%{event_data['title'][:20]}%"
-            ).limit(5).execute()
-            existing_data = existing.data
-            if existing_data and isinstance(existing_data, list) and len(existing_data) > 0:
-                first_item = existing_data[0]
-                dup_title = str(first_item.get("title", "")) if isinstance(first_item, dict) else ""
-                dup_id = str(first_item.get("event_id", "")) if isinstance(first_item, dict) else ""
-                return json.dumps({
-                    "status": "duplicate",
-                    "message": f"数据库中已存在相似标题的活动：{dup_title}（ID: {dup_id}）。如需更新请使用更新功能。",
-                    "existing": existing_data,
-                }, ensure_ascii=False)
-        except APIError:
-            pass  # 去重检查失败不影响主流程
-
-        # 插入数据库
-        event_id = _insert_event(event_data)
+        # 提取并规范化结构化信息；仅返回预览，不访问数据库
+        event_data = normalize_event_times(_extract_structured_info(text_content, actual_url))
+        preview = event_db_payload(event_data, include_none=True)
+        preview.pop("event_id", None)
 
         result = {
-            "status": "success",
-            "message": f"已成功解析并保存竞赛/活动信息，编号: {event_id}",
-            "event_id": event_id,
-            "parsed_data": {
-                "title": event_data["title"],
-                "scope_type": event_data["scope_type"],
-                "category": event_data["category"],
-                "summary": event_data["summary"],
-                "contest_level": event_data["contest_level"],
-                "organizer": event_data["organizer"],
-                "source_name": event_data["source_name"],
-                "authority_level": event_data["authority_level"],
-            }
+            "status": "preview",
+            "message": "通知已解析为预览，未写入公共赛事数据库。",
+            "parsed_data": preview,
         }
         return json.dumps(result, ensure_ascii=False, default=str)
 

@@ -29,6 +29,7 @@ from tools.event_enrichment import (
     _load_ministry_contests,
     ASSETS_DIR,
 )
+from tools.event_schema import normalize_event_times, parse_event_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -100,31 +101,27 @@ def _determine_status(signup_deadline: Optional[str]) -> str:
     """
     if not signup_deadline:
         return "暂无本届信息"
-    try:
-        from datetime import timezone
-        deadline = datetime.fromisoformat(signup_deadline.replace("+08:00", "+08:00"))
-        now = datetime.now(timezone.utc)
-        diff = (deadline - now).days
-        if diff < 0:
-            return "已截止"
-        elif diff <= 7:
-            return "即将截止"
-        else:
-            return "报名中"
-    except Exception:
+    deadline = parse_event_datetime(signup_deadline)
+    if deadline is None:
         return "待确认"
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
+    if deadline < now:
+        return "已截止"
+    if (deadline - now).days <= 3:
+        return "即将截止"
+    return "报名中"
 
 
 def _is_expired(signup_deadline: Optional[str]) -> bool:
     """判断报名截止时间是否已过期。无 deadline 的视为未过期（保留）。"""
     if not signup_deadline:
         return False
-    try:
-        from datetime import timezone
-        deadline = datetime.fromisoformat(signup_deadline.replace("+08:00", "+08:00"))
-        return deadline < datetime.now(timezone.utc)
-    except Exception:
+    deadline = parse_event_datetime(signup_deadline)
+    if deadline is None:
         return False
+    from datetime import timezone
+    return deadline < datetime.now(timezone.utc)
 
 
 def _validate_timeline(event: dict) -> dict:
@@ -134,23 +131,13 @@ def _validate_timeline(event: dict) -> dict:
     如果矛盾（event_time < signup_deadline），清空 event_time，因为无法判断哪个字段正确。
     返回修正后的 event dict。
     """
-    deadline = event.get("signup_deadline")
-    event_time = event.get("event_time")
-    if not deadline or not event_time:
-        return event
-    try:
-        from datetime import timezone
-        dl = datetime.fromisoformat(deadline.replace("+08:00", "+08:00"))
-        et = datetime.fromisoformat(event_time.replace("+08:00", "+08:00"))
-        if et < dl:
-            logger.warning(
-                f"Timeline conflict: event_time({event_time}) < signup_deadline({deadline}) "
-                f"for '{event.get('title', '')[:40]}' — clearing event_time"
-            )
-            event["event_time"] = None
-    except Exception:
-        pass
-    return event
+    normalized = normalize_event_times(event)
+    if event.get("event_time") and normalized.get("event_time") is None:
+        logger.warning(
+            "Invalid or conflicting event_time for '%s' — clearing it",
+            event.get("title", "")[:40],
+        )
+    return normalized
 
 
 def load_saikr_data() -> list:
@@ -222,10 +209,12 @@ def _build_ministry_catalog_payload(item: dict) -> dict:
 
 def _cleanup_expired(supabase) -> int:
     """
-    删除数据库中报名截止时间已过的过期 event_edition 记录。
+    保留已截止记录，并把状态刷新为“已截止”。
+
+    函数名为兼容既有调用保留；不再删除历史届次。
 
     Returns:
-        被删除的记录数
+        被更新的记录数
     """
     from datetime import timezone as tz
     from sqlalchemy import select
@@ -234,7 +223,7 @@ def _cleanup_expired(supabase) -> int:
 
     engine = get_engine()
     now = datetime.now(tz.utc)
-    deleted_count = 0
+    updated_count = 0
 
     with Session(engine) as session:
         expired = session.execute(
@@ -245,15 +234,20 @@ def _cleanup_expired(supabase) -> int:
         ).scalars().all()
 
         for edition in expired:
-            title = edition.title
-            session.delete(edition)
-            deleted_count += 1
-            logger.info(f"Deleted expired: {title[:50]} (deadline={edition.signup_deadline})")
+            if edition.status != "已截止":
+                edition.status = "已截止"
+                edition.updated_at = now
+                updated_count += 1
+                logger.info(
+                    "Marked expired: %s (deadline=%s)",
+                    edition.title[:50],
+                    edition.signup_deadline,
+                )
 
         session.commit()
 
-    logger.info(f"Expired cleanup complete: {deleted_count} records deleted")
-    return deleted_count
+    logger.info("Expired refresh complete: %s records updated", updated_count)
+    return updated_count
 
 
 def _refresh_all_statuses(supabase) -> int:
@@ -324,33 +318,35 @@ def sync_events_to_db(enriched_events: list, ctx=None) -> dict:
                 stats["details"].append({"action": "skipped_ad", "title": title[:50]})
                 continue
 
-            # Skip expired events (no valid current edition)
-            if _is_expired(event.get("signup_deadline")):
-                logger.info(f"Skipping expired event: {title[:50]} (deadline={event.get('signup_deadline')})")
-                stats["skipped"] += 1
-                stats["details"].append({"action": "skipped_expired", "title": title[:50]})
-                continue
-
             # Timeline validation
             event = _validate_timeline(event)
+            event["status"] = _determine_status(event.get("signup_deadline"))
 
             with Session(engine) as session:
-                merge_event(
+                edition = merge_event(
                     session,
                     event,
                     extraction_method=event.get("extraction_method", "sync"),
                     confidence=event.get("confidence", "medium"),
                 )
-                # Determine added vs updated is handled inside merge_event; we approximate here
-                stats["added"] += 1
-                stats["details"].append({"action": "merged", "title": title[:50]})
+                created = bool(getattr(edition, "_merge_created", False))
+                action = "added" if created else "updated"
+                stats[action] += 1
+                stats["details"].append({
+                    "action": action,
+                    "event_id": edition.event_id,
+                    "title": title[:50],
+                })
 
         except Exception as e:
             logger.error(f"Failed to sync event '{event.get('title', 'unknown')[:30]}': {e}")
             stats["errors"] += 1
             stats["details"].append({"action": "error", "title": event.get("title", "unknown")[:50], "error": str(e)})
 
-    logger.info(f"Sync complete: added/merged={stats['added']}, skipped={stats['skipped']}, errors={stats['errors']}")
+    logger.info(
+        "Sync complete: added=%s, updated=%s, skipped=%s, errors=%s",
+        stats["added"], stats["updated"], stats["skipped"], stats["errors"],
+    )
     return stats
 
 
@@ -391,8 +387,8 @@ def run_full_sync(ctx=None, skip_enrichment: bool = False) -> dict:
     # 0. 清理过期记录 + 刷新状态
     supabase = _get_supabase()
     try:
-        deleted = _cleanup_expired(supabase)
-        logger.info(f"Pre-sync expired cleanup: {deleted} records deleted")
+        expired_updated = _cleanup_expired(supabase)
+        logger.info("Pre-sync expired refresh: %s records updated", expired_updated)
     except Exception as e:
         logger.warning(f"Expired cleanup failed (non-fatal): {e}")
     try:

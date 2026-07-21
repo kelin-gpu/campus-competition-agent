@@ -1,0 +1,1169 @@
+{
+  "discovered": 122,
+  "prefetch_duplicates": 0,
+  "truncated_by_limit": 62,
+  "detail_page_candidates": 58,
+  "accepted": 32,
+  "added": 0,
+  "sources": {
+    "devfolio": {
+      "listing_pages_fetched": 2,
+      "listing_items_found": 2,
+      "search_results_found": 0,
+      "prefetch_duplicates": 0,
+      "truncated_by_limit": 0,
+      "structured_candidates": 0,
+      "detail_candidates": 0,
+      "details_fetched": 0,
+      "parse_success": 0,
+      "parse_failed": 0,
+      "open_detected": 0,
+      "upcoming_detected": 0,
+      "closed_filtered": 0,
+      "expired_filtered": 0,
+      "invalid_date_filtered": 0,
+      "unverified_skipped": 0,
+      "too_far_future_filtered": 0,
+      "not_hackathon": 0,
+      "postparse_duplicates": 0,
+      "accepted": 0,
+      "added": 0,
+      "updated": 0,
+      "errors": 0
+    },
+    "mlh": {
+      "listing_pages_fetched": 0,
+      "listing_items_found": 60,
+      "search_results_found": 0,
+      "prefetch_duplicates": 0,
+      "truncated_by_limit": 31,
+      "structured_candidates": 29,
+      "detail_candidates": 29,
+      "details_fetched": 0,
+      "parse_success": 29,
+      "parse_failed": 0,
+      "open_detected": 0,
+      "upcoming_detected": 29,
+      "closed_filtered": 0,
+      "expired_filtered": 0,
+      "invalid_date_filtered": 0,
+      "unverified_skipped": 0,
+      "too_far_future_filtered": 0,
+      "not_hackathon": 0,
+      "postparse_duplicates": 0,
+      "accepted": 29,
+      "added": 0,
+      "updated": 0,
+      "errors": 0
+    },
+    "hackclub": {
+      "listing_pages_fetched": 0,
+      "listing_items_found": 60,
+      "search_results_found": 0,
+      "prefetch_duplicates": 0,
+      "truncated_by_limit": 31,
+      "structured_candidates": 3,
+      "detail_candidates": 29,
+      "details_fetched": 26,
+      "parse_success": 3,
+      "parse_failed": 0,
+      "open_detected": 3,
+      "upcoming_detected": 3,
+      "closed_filtered": 0,
+      "expired_filtered": 0,
+      "invalid_date_filtered": 0,
+      "unverified_skipped": 12,
+      "too_far_future_filtered": 0,
+      "not_hackathon": 13,
+      "postparse_duplicates": 0,
+      "accepted": 3,
+      "added": 0,
+      "updated": 0,
+      "errors": 0,
+      "event_passed_filtered": 1
+    },
+    "devpost": {
+      "listing_pages_fetched": 0,
+      "listing_items_found": 0,
+      "search_results_found": 0,
+      "prefetch_duplicates": 0,
+      "truncated_by_limit": 0,
+      "structured_candidates": 0,
+      "detail_candidates": 0,
+      "details_fetched": 0,
+      "parse_success": 0,
+      "parse_failed": 0,
+      "open_detected": 0,
+      "upcoming_detected": 0,
+      "closed_filtered": 0,
+      "expired_filtered": 0,
+      "invalid_date_filtered": 0,
+      "unverified_skipped": 0,
+      "too_far_future_filtered": 0,
+      "not_hackathon": 0,
+      "postparse_duplicates": 0,
+      "accepted": 0,
+      "added": 0,
+      "updated": 0,
+      "errors": 0
+    },
+    "general_search": {
+      "listing_pages_fetched": 0,
+      "listing_items_found": 0,
+      "search_results_found": 0,
+      "prefetch_duplicates": 0,
+      "truncated_by_limit": 0,
+      "structured_candidates": 0,
+      "detail_candidates": 0,
+      "details_fetched": 0,
+      "parse_success": 0,
+      "parse_failed": 0,
+      "open_detected": 0,
+      "upcoming_detected": 0,
+      "closed_filtered": 0,
+      "expired_filtered": 0,
+      "invalid_date_filtered": 0,
+      "unverified_skipped": 0,
+      "too_far_future_filtered": 0,
+      "not_hackathon": 0,
+      "postparse_duplicates": 0,
+      "accepted": 0,
+      "added": 0,
+      "updated": 0,
+      "errors": 0
+    }
+  },
+  "details": [
+    {
+      "action": "not_hackathon",
+      "title": "Horizons | Hack Club",
+      "source_url": "https://horizons.hackclub.com/?ref=hackathons"
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "Brilliant Move Hackathon",
+      "source_url": "https://www.thebrilliantmove.com/",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Horizons | Hack Club",
+      "source_url": "https://horizons.hackclub.com/europa"
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Horizons Arcana",
+      "source_url": "https://arcana.hackclub.com/"
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "MarinHacks 2026 — Marin Catholic's First High School Hackathon",
+      "source_url": "https://marinhacks.com/",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Paradox",
+      "source_url": "https://paradox.hackclub.com"
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "Bay Valley Hacks | Bay Area's Biggest HS Hackathon",
+      "source_url": "https://bayvalleyhacks.com/",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "Horizons Equinox | 14-16 Aug - Cairo, Egypt",
+      "source_url": "https://equinox.hackclub.com/",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "Pixel Forge AI Hackathon",
+      "source_url": "https://pixelforgehackathons.info/",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": "2026-08-15",
+      "event_end": "2026-08-22",
+      "reg_status": null
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Code Arizona",
+      "source_url": "https://codearizona.codehatch.org/"
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "AnimalHack – Int'l open hackathon for anyone who interacts with any animals – including pets, service animals, farm animals and wild animals",
+      "source_url": "https://animalhack.org",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Hyphen-Hacks",
+      "source_url": "https://www.hyphen-hacks.com/"
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Garuda Hacks 7.0",
+      "source_url": "https://www.garudahacks.com/"
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "Hack Club Outpost",
+      "source_url": "https://outpost.hackclub.com",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "not_hackathon",
+      "title": "JecHacks",
+      "source_url": "https://www.jechacks.com"
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "Vancouver Students' Hackathon",
+      "source_url": "https://vshacks.com/",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": "open"
+    },
+    {
+      "action": "not_hackathon",
+      "title": "The Vakathon",
+      "source_url": "https://thevakathon.com"
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "Fire Hacks 2026 — Bay Area High School Hackathon",
+      "source_url": "https://firehacks.codestarters.org/",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Horizons Crux | Hack Club Flagship Hackathon | Sydney, July 10–12, 2026",
+      "source_url": "https://crux.hackclub.com"
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Pixel Forge Jam",
+      "source_url": "https://pixelforgejam.org/"
+    },
+    {
+      "action": "not_hackathon",
+      "title": "CSI Hacks",
+      "source_url": "https://www.csihacks.com/"
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "Cove Hacks | The World's Largest IRL High School Hackathon",
+      "source_url": "https://www.covehacks.dev/",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "",
+      "source_url": "https://ccuhacks.in",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": null
+    },
+    {
+      "action": "unverified_skipped",
+      "title": "CipherHacks 2026 | San Diego High School Cybersecurity Hackathon",
+      "source_url": "https://cipherhacks.tech",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": null,
+      "event_end": null,
+      "reg_status": "open"
+    },
+    {
+      "action": "not_hackathon",
+      "title": "Home — Girls Got Game",
+      "source_url": "https://www.girlsgotgamejam.org/"
+    },
+    {
+      "action": "event_passed_filtered",
+      "title": "Hack the Arts",
+      "source_url": "https://www.hackthearts.net",
+      "source": "hackclub",
+      "deadline": null,
+      "event_start": "2026-07-01T00:00:00+00:00",
+      "event_end": "2026-08-01T23:59:59+00:00",
+      "reg_status": "upcoming"
+    }
+  ],
+  "accepted_records": [
+    {
+      "title": "Banana Hacks 2026 — Generative AI & Image Creation Hackathon",
+      "source_url": "https://www.bananahacks.tech",
+      "source_name": "HackClub",
+      "signup_deadline": null,
+      "event_start": "2026-10-09",
+      "event_end": "2026-10-12",
+      "registration_status": "open",
+      "organizer": "",
+      "location": "",
+      "mode": null,
+      "tags": [
+        "黑客松",
+        "高中生"
+      ]
+    },
+    {
+      "title": "Hexafalls 2",
+      "source_url": "https://hexafalls.org",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-07-24T15:01:00Z",
+      "event_end": "2026-07-26T21:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Agarpara Kolkata, West Bengal",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Global Hack Week: Agents",
+      "source_url": "https://events.mlh.io/events/14312-global-hack-week-agents",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-08-07T14:00:00Z",
+      "event_end": "2026-08-13T17:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "",
+      "mode": "online",
+      "tags": [
+        "黑客松",
+        "online"
+      ]
+    },
+    {
+      "title": "Horizons Europa",
+      "source_url": "https://hackathons.hackclub.com/",
+      "source_name": "HackClub",
+      "signup_deadline": null,
+      "event_start": "2026-07-24T00:00:00+00:00",
+      "event_end": "2026-07-26T23:59:59+00:00",
+      "registration_status": "upcoming",
+      "organizer": "",
+      "location": "",
+      "mode": null,
+      "tags": [
+        "黑客松",
+        "高中生"
+      ]
+    },
+    {
+      "title": "PEC HACKS 4.0",
+      "source_url": "https://pechacks.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-08-29T10:30:00Z",
+      "event_end": "2026-08-30T12:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Chennai, Tamilnadu",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Horizons Arcana",
+      "source_url": "https://hackathons.hackclub.com/",
+      "source_name": "HackClub",
+      "signup_deadline": null,
+      "event_start": "2026-07-31T00:00:00+00:00",
+      "event_end": "2026-08-02T23:59:59+00:00",
+      "registration_status": "upcoming",
+      "organizer": "",
+      "location": "",
+      "mode": null,
+      "tags": [
+        "黑客松",
+        "高中生"
+      ]
+    },
+    {
+      "title": "HackMTY",
+      "source_url": "https://hackmty.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-11T01:11:11Z",
+      "event_end": "2026-09-13T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Monterrey, Nuevo Leon",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Global Hack Week: Data",
+      "source_url": "https://events.mlh.io/events/14416-global-hack-week-data",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-11T16:00:00Z",
+      "event_end": "2026-09-17T18:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "",
+      "mode": "online",
+      "tags": [
+        "黑客松",
+        "online"
+      ]
+    },
+    {
+      "title": "HackRice",
+      "source_url": "https://hackrice.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-11T20:00:00Z",
+      "event_end": "2026-09-13T19:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Houston, Texas",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "VTHacks 14",
+      "source_url": "https://vthacks.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-18T01:11:11Z",
+      "event_end": "2026-09-20T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Blacksburg, Virginia",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HackHers @GSU",
+      "source_url": "https://hackhers.club/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-18T15:00:00Z",
+      "event_end": "2026-09-19T21:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Atlanta, , GA",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Hack the North",
+      "source_url": "https://hackthenorth.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-18T19:00:00Z",
+      "event_end": "2026-09-20T20:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Waterloo, Ontario",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HopHacks",
+      "source_url": "https://www.hophacks.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-18T22:00:00Z",
+      "event_end": "2026-09-20T17:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Baltimore, Maryland",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "SteelHacks XIII",
+      "source_url": "https://steelhacks.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-19T13:00:00Z",
+      "event_end": "2026-09-20T08:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Pittsburgh, PA",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HackGT 13",
+      "source_url": "http://hack.gt/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-25T18:00:00Z",
+      "event_end": "2026-09-27T19:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Atlanta, GA",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "ShellHacks",
+      "source_url": "https://shellhacks.net/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-25T19:00:00Z",
+      "event_end": "2026-09-27T23:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Miami, Florida",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "hackUMBC",
+      "source_url": "https://hackumbc.tech/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-26T01:11:11Z",
+      "event_end": "2026-09-27T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Baltimore, MD",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "DivHacks",
+      "source_url": "https://www.columbiadivhacks.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-26T01:11:11Z",
+      "event_end": "2026-09-27T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "New York, NY",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "BigRed//Hacks 2026",
+      "source_url": "https://www.bigredhacks.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-02T01:11:11Z",
+      "event_end": "2026-10-04T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Ithaca, New York",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Hack Dearborn 5: Conjure Reality",
+      "source_url": "https://www.hackdearborn.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-03T01:11:11Z",
+      "event_end": "2026-10-04T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Dearborn, Michigan",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Rowdy Hacks",
+      "source_url": "https://rowdyhacks.org",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-03T01:11:11Z",
+      "event_end": "2026-10-04T22:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "San Antonio, Texas",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "MHacks",
+      "source_url": "https://www.mhacks.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-03T13:00:00Z",
+      "event_end": "2026-10-04T23:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Ann Arbor, MI",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "GirlHacks",
+      "source_url": "https://www.njitgirlhacks.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-03T13:00:00Z",
+      "event_end": "2026-10-04T20:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Newark, NJ",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HackNC",
+      "source_url": "https://hacknc.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-09T01:11:11Z",
+      "event_end": "2026-10-11T21:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Chapel Hill, North Carolina",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "SBUHacks",
+      "source_url": "https://hack.sbcs.io/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-09T01:11:11Z",
+      "event_end": "2026-10-11T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Stony Brook, New York",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Knight Hacks IX",
+      "source_url": "https://2026.knighthacks.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-09T20:00:00Z",
+      "event_end": "2026-10-11T22:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Orlando, Florida",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "CodeRED Orion",
+      "source_url": "https://uhcode.red/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-10T13:00:00Z",
+      "event_end": "2026-10-11T20:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Houston, Texas",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "SwampHacks XII",
+      "source_url": "https://swamphacks.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-16T01:11:11Z",
+      "event_end": "2026-10-18T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Gainesville, Florida",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Hack the Valley",
+      "source_url": "https://hackthevalley.io/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-16T20:00:00Z",
+      "event_end": "2026-10-18T21:30:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Scarborough, Ontario",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HackTX 26",
+      "source_url": "https://hacktx.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-17T01:11:11Z",
+      "event_end": "2026-10-18T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Austin, TX",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "hackCBS 9.O",
+      "source_url": "https://hackcbs.tech",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-31T13:00:00Z",
+      "event_end": "2026-11-01T22:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "New delhi, New delhi",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HackRPI 2026",
+      "source_url": "https://hackrpi.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-11-07T14:00:00Z",
+      "event_end": "2026-11-08T21:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Troy, New York",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    }
+  ],
+  "accepted_samples": [
+    {
+      "title": "Banana Hacks 2026 — Generative AI & Image Creation Hackathon",
+      "source_url": "https://www.bananahacks.tech",
+      "source_name": "HackClub",
+      "signup_deadline": null,
+      "event_start": "2026-10-09",
+      "event_end": "2026-10-12",
+      "registration_status": "open",
+      "organizer": "",
+      "location": "",
+      "mode": null,
+      "tags": [
+        "黑客松",
+        "高中生"
+      ]
+    },
+    {
+      "title": "Hexafalls 2",
+      "source_url": "https://hexafalls.org",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-07-24T15:01:00Z",
+      "event_end": "2026-07-26T21:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Agarpara Kolkata, West Bengal",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Global Hack Week: Agents",
+      "source_url": "https://events.mlh.io/events/14312-global-hack-week-agents",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-08-07T14:00:00Z",
+      "event_end": "2026-08-13T17:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "",
+      "mode": "online",
+      "tags": [
+        "黑客松",
+        "online"
+      ]
+    },
+    {
+      "title": "Horizons Europa",
+      "source_url": "https://hackathons.hackclub.com/",
+      "source_name": "HackClub",
+      "signup_deadline": null,
+      "event_start": "2026-07-24T00:00:00+00:00",
+      "event_end": "2026-07-26T23:59:59+00:00",
+      "registration_status": "upcoming",
+      "organizer": "",
+      "location": "",
+      "mode": null,
+      "tags": [
+        "黑客松",
+        "高中生"
+      ]
+    },
+    {
+      "title": "PEC HACKS 4.0",
+      "source_url": "https://pechacks.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-08-29T10:30:00Z",
+      "event_end": "2026-08-30T12:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Chennai, Tamilnadu",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Horizons Arcana",
+      "source_url": "https://hackathons.hackclub.com/",
+      "source_name": "HackClub",
+      "signup_deadline": null,
+      "event_start": "2026-07-31T00:00:00+00:00",
+      "event_end": "2026-08-02T23:59:59+00:00",
+      "registration_status": "upcoming",
+      "organizer": "",
+      "location": "",
+      "mode": null,
+      "tags": [
+        "黑客松",
+        "高中生"
+      ]
+    },
+    {
+      "title": "HackMTY",
+      "source_url": "https://hackmty.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-11T01:11:11Z",
+      "event_end": "2026-09-13T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Monterrey, Nuevo Leon",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Global Hack Week: Data",
+      "source_url": "https://events.mlh.io/events/14416-global-hack-week-data",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-11T16:00:00Z",
+      "event_end": "2026-09-17T18:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "",
+      "mode": "online",
+      "tags": [
+        "黑客松",
+        "online"
+      ]
+    },
+    {
+      "title": "HackRice",
+      "source_url": "https://hackrice.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-11T20:00:00Z",
+      "event_end": "2026-09-13T19:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Houston, Texas",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "VTHacks 14",
+      "source_url": "https://vthacks.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-18T01:11:11Z",
+      "event_end": "2026-09-20T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Blacksburg, Virginia",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HackHers @GSU",
+      "source_url": "https://hackhers.club/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-18T15:00:00Z",
+      "event_end": "2026-09-19T21:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Atlanta, , GA",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Hack the North",
+      "source_url": "https://hackthenorth.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-18T19:00:00Z",
+      "event_end": "2026-09-20T20:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Waterloo, Ontario",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HopHacks",
+      "source_url": "https://www.hophacks.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-18T22:00:00Z",
+      "event_end": "2026-09-20T17:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Baltimore, Maryland",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "SteelHacks XIII",
+      "source_url": "https://steelhacks.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-19T13:00:00Z",
+      "event_end": "2026-09-20T08:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Pittsburgh, PA",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "HackGT 13",
+      "source_url": "http://hack.gt/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-25T18:00:00Z",
+      "event_end": "2026-09-27T19:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Atlanta, GA",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "ShellHacks",
+      "source_url": "https://shellhacks.net/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-25T19:00:00Z",
+      "event_end": "2026-09-27T23:00:00Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Miami, Florida",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "hackUMBC",
+      "source_url": "https://hackumbc.tech/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-26T01:11:11Z",
+      "event_end": "2026-09-27T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Baltimore, MD",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "DivHacks",
+      "source_url": "https://www.columbiadivhacks.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-09-26T01:11:11Z",
+      "event_end": "2026-09-27T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "New York, NY",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "BigRed//Hacks 2026",
+      "source_url": "https://www.bigredhacks.com/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-02T01:11:11Z",
+      "event_end": "2026-10-04T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Ithaca, New York",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    },
+    {
+      "title": "Hack Dearborn 5: Conjure Reality",
+      "source_url": "https://www.hackdearborn.org/",
+      "source_name": "MLH",
+      "signup_deadline": null,
+      "event_start": "2026-10-03T01:11:11Z",
+      "event_end": "2026-10-04T23:59:59Z",
+      "registration_status": "upcoming",
+      "organizer": "MLH",
+      "location": "Dearborn, Michigan",
+      "mode": "offline",
+      "tags": [
+        "黑客松",
+        "offline"
+      ]
+    }
+  ]
+}

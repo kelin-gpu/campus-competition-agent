@@ -27,19 +27,37 @@
       "base_url": "https://hackclub.com/hackathons",
       "authority": "medium",
       "notes": "高中生/大学生黑客松社区"
+    },
+    {
+      "name": "DoraHacks",
+      "domain": "dorahacks.io",
+      "base_url": "https://dorahacks.io/hackathon",
+      "authority": "high",
+      "notes": "Web3 与开源黑客松平台，通过通用搜索发现活动详情页"
+    },
+    {
+      "name": "Lu.ma",
+      "domain": "lu.ma",
+      "base_url": "https://lu.ma/discover",
+      "authority": "medium",
+      "notes": "技术活动与黑客松发布平台，通过通用搜索发现活动详情页"
     }
   ],
   "search_queries": [
-    "黑客松 报名 2026",
+    "黑客松 报名 {year}",
     "大学生 黑客松 报名中",
     "AI 黑客松 报名 截止",
     "线上黑客松 开放报名",
-    "hackathon registration open 2026",
+    "hackathon registration open {year}",
     "student hackathon apply deadline",
     "AI hackathon application open",
-    "upcoming hackathon online 2026",
-    "site:devpost.com hackathon",
-    "site:devfolio.co hackathon"
+    "upcoming hackathon online {year}",
+    "site:devpost.com hackathon {year}",
+    "site:devfolio.co hackathon {year}",
+    "site:dorahacks.io/hackathon {year}",
+    "site:lu.ma hackathon {year}",
+    "site:eventbrite.com hackathon {year}",
+    "university hackathon register {year}"
   ],
   "exclusion_patterns": [
     "往届", "回顾", "获奖名单", "获奖作品", "结果公布",
