@@ -47,7 +47,7 @@ def _env_int(name: str, default: int, minimum: int = 0) -> int:
 # 核心公众号列表（永远保留，不受动态发现影响）
 # 分类：school_level（校级核心）/ college（院系扩展）/ dynamic（动态发现）
 CORE_ACCOUNTS = [
-    # ====== 校级核心（7个）======
+    # ====== 校级核心（8个）======
     {"name": "南京大学", "biz": "", "desc": "南京大学官方公众号", "is_core": True, "category": "school_level"},
     {"name": "南京大学团委", "biz": "", "desc": "共青团南京大学委员会", "is_core": True, "category": "school_level"},
     {"name": "南京大学学生会", "biz": "", "desc": "南京大学学生会", "is_core": True, "category": "school_level"},
@@ -55,7 +55,8 @@ CORE_ACCOUNTS = [
     {"name": "南京大学研究生院", "biz": "", "desc": "南京大学研究生院", "is_core": True, "category": "school_level"},
     {"name": "南京大学就业创业指导中心", "biz": "", "desc": "就业创业指导", "is_core": True, "category": "school_level"},
     {"name": "南京大学健雄书院", "biz": "", "desc": "健雄书院", "is_core": True, "category": "school_level"},
-    # ====== 院系扩展（48个）======
+    {"name": "南大育教", "biz": "", "desc": "南京大学党委学生工作部/本科生院官方号", "is_core": True, "category": "school_level"},
+    # ====== 院系扩展（49个）======
     {"name": "南京大学新生学院", "biz": "", "desc": "新生学院", "is_core": True, "category": "college"},
     {"name": "南京大学文学院", "biz": "", "desc": "文学院", "is_core": True, "category": "college"},
     {"name": "南京大学历史学院", "biz": "", "desc": "历史学院", "is_core": True, "category": "college"},
@@ -78,6 +79,7 @@ CORE_ACCOUNTS = [
     {"name": "南京大学计算机学院", "biz": "", "desc": "计算机学院", "is_core": True, "category": "college"},
     {"name": "南京大学软件学院", "biz": "", "desc": "软件学院", "is_core": True, "category": "college"},
     {"name": "南京大学人工智能学院", "biz": "", "desc": "人工智能学院", "is_core": True, "category": "college"},
+    {"name": "NJUAI团学联", "biz": "", "desc": "人工智能学院团委学生联合会", "is_core": True, "category": "college"},
     {"name": "南京大学电子科学与工程学院", "biz": "", "desc": "电子科学与工程学院", "is_core": True, "category": "college"},
     {"name": "南京大学现代工程与应用科学学院", "biz": "", "desc": "现代工程与应用科学学院", "is_core": True, "category": "college"},
     {"name": "南京大学环境学院", "biz": "", "desc": "环境学院", "is_core": True, "category": "college"},
